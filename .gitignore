@@ -1,0 +1,8 @@
+# OS / Editor Artifacts
+.DS_Store
+Thumbs.db
+*.log
+
+# Screenshots & Temporary Outputs
+screenshot_*.png
+test_*.html

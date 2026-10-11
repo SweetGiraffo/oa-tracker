@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DSA GRINDER - VIRTUAL CONTEST TRACKER</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- ARCADE HEADER -->
+  <header class="arcade-header">
+    <div class="header-container">
+      <div class="brand-section">
+        <div class="pixel-logo-icon">[DG]</div>
+        <div>
+          <h1 class="brand-title">DSA GRINDER</h1>
+          <span class="brand-sub">DAILY VIRTUAL CONTEST CADENCE [OCT 10 - OCT 31]</span>
+        </div>
+      </div>
+
+      <div class="header-actions">
+        <button class="pixel-btn btn-sm btn-dark" id="btnToggleSound" title="Toggle 8-bit sound effects">
+          [AUDIO: ON]
+        </button>
+        <button class="pixel-btn btn-sm btn-red" id="btnResetAll" title="Reset all progress">
+          [RESET DATA]
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- HUD STATUS BAR -->
+  <section class="hud-status-bar">
+    <div class="hud-panel">
+      <span class="hud-label">CURRENT SYSTEM DATE</span>
+      <div class="hud-val-group">
+        <span class="hud-val-badge accent-yellow" id="hudCurrentDate">OCT 10</span>
+        <button class="pixel-btn btn-sm btn-cyan" id="btnQuickPrevDay" title="Previous day">&lt;&lt;</button>
+        <button class="pixel-btn btn-sm btn-cyan" id="btnQuickNextDay" title="Next day">&gt;&gt;</button>
+      </div>
+    </div>
+
+    <div class="hud-panel">
+      <span class="hud-label">PLAYER STATS - EXP</span>
+      <div class="exp-bar-container">
+        <div class="exp-bar-fill" id="expBarFill"></div>
+      </div>
+      <div class="exp-text">
+        <span id="playerLevelText">RANK: APPRENTICE [LVL 0]</span>
+        <span id="playerProgressText">0 / 22 COMPLETED</span>
+      </div>
+    </div>
+
+    <div class="hud-panel">
+      <span class="hud-label">STATUS COUNTERS</span>
+      <div class="hud-val-group">
+        <span class="hud-val-badge accent-green" id="hudCompletedCount">[DONE: 0]</span>
+        <span class="hud-val-badge accent-red" id="hudMissedCount">[MISSED: 0]</span>
+        <span class="hud-val-badge accent-cyan" id="hudTopicsCount">[TOPICS: 0]</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- NAVIGATION TABS -->
+  <nav class="main-nav-tabs">
+    <button class="nav-tab-btn active" data-tab="tab-today">
+      TODAY'S OA <span class="tab-badge" id="tabBadgeToday">ACTIVE</span>
+    </button>
+    <button class="nav-tab-btn" data-tab="tab-missed">
+      MISSED CONTESTS <span class="tab-badge badge-red" id="tabBadgeMissed">0</span>
+    </button>
+    <button class="nav-tab-btn" data-tab="tab-topics">
+      TOPICS COVERED <span class="tab-badge badge-green" id="tabBadgeTopics">0</span>
+    </button>
+    <button class="nav-tab-btn" data-tab="tab-questions">
+      QUESTION VAULT <span class="tab-badge" id="tabBadgeVault">0</span>
+    </button>
+    <button class="nav-tab-btn" data-tab="tab-schedule">
+      ALL ROADMAP [22]
+    </button>
+    <button class="nav-tab-btn" data-tab="tab-sql">
+      SQL &amp; PANDAS <span class="tab-badge" id="tabBadgeSql">0/25</span>
+    </button>
+    <button class="nav-tab-btn" data-tab="tab-books">
+      BOOKS &amp; DOWNLOADS <span class="tab-badge badge-green" id="tabBadgeBooks">1</span>
+    </button>
+  </nav>
+
+  <!-- MAIN WRAPPER -->
+  <main class="content-wrapper">
+
+    <!-- ==========================================
+         VIEW 1: TODAY'S OA MISSION
+         ========================================== -->
+    <section class="view-section active" id="tab-today">
+      
+      <!-- Day Simulator Selector -->
+      <div class="day-simulator-box">
+        <div class="sim-title">
+          <span>&gt;&gt; DAY DISPATCHER - SELECT OA DATE TO ENGAGE:</span>
+        </div>
+        <div class="sim-controls">
+          <label for="dateSelect" class="hud-label">TARGET DAY:</label>
+          <select id="dateSelect" class="pixel-select"></select>
+          <button class="pixel-btn btn-sm btn-yellow" id="btnSyncRealToday">
+            [SYNC REAL DATE]
+          </button>
+        </div>
+      </div>
+
+      <!-- Active OA Hero Card -->
+      <div class="hero-mission-card" id="todayHeroCard">
+        <!-- Injected via JavaScript -->
+      </div>
+    </section>
+
+    <!-- ==========================================
+         VIEW 2: MISSED CONTESTS
+         ========================================== -->
+    <section class="view-section" id="tab-missed">
+      <div class="missed-alert-banner" id="missedAlertBanner">
+        <div class="alert-text-group">
+          <span class="alert-heading">[!] BACKLOG DETECTED: MISSED ASSESSMENTS</span>
+          <span class="alert-desc">Contests from past days or manually flagged as missed are logged here. Complete them anytime to unlock topics and add problems to your vault.</span>
+        </div>
+      </div>
+
+      <div id="missedListContainer" class="contests-grid-list">
+        <!-- Injected via JavaScript -->
+      </div>
+    </section>
+
+    <!-- ==========================================
+         VIEW 3: TOPICS COVERED DASHBOARD
+         ========================================== -->
+    <section class="view-section" id="tab-topics">
+      <div class="topics-stats-row">
+        <div class="stat-metric-card">
+          <div class="stat-num" id="statUniqueTopics">0</div>
+          <div class="stat-desc">UNIQUE TOPICS REVEALED</div>
+        </div>
+        <div class="stat-metric-card">
+          <div class="stat-num" id="statContestsCleared">0</div>
+          <div class="stat-desc">CONTESTS CONQUERED</div>
+        </div>
+        <div class="stat-metric-card">
+          <div class="stat-num" id="statTotalMasteryPts">0</div>
+          <div class="stat-desc">PATTERN MASTERY BADGES</div>
+        </div>
+      </div>
+
+      <div class="schedule-table-card">
+        <div class="panel-title-bar">
+          <span>&gt;&gt; UNLOCKED PATTERN DIRECTORY</span>
+          <span class="hud-label">PATTERNS ARE UNLOCKED ONLY AFTER OA COMPLETION</span>
+        </div>
+        <div id="topicsGridContainer" class="topics-covered-grid">
+          <!-- Injected via JavaScript -->
+        </div>
+      </div>
+    </section>
+
+    <!-- ==========================================
+         VIEW 4: QUESTION VAULT / UPSOLVE LIST
+         ========================================== -->
+    <section class="view-section" id="tab-questions">
+      <div class="schedule-table-card">
+        <div class="panel-title-bar">
+          <span>&gt;&gt; UNLOCKED CONTEST QUESTIONS VAULT</span>
+          <span class="hud-label">PRACTICE &amp; UPSOLVE PROBLEMS FROM COMPLETED CONTESTS</span>
+        </div>
+
+        <div class="schedule-filters-bar">
+          <button class="filter-btn active" data-qfilter="ALL">[ALL UNLOCKED]</button>
+          <button class="filter-btn" data-qfilter="Easy">[EASY]</button>
+          <button class="filter-btn" data-qfilter="Medium">[MEDIUM]</button>
+          <button class="filter-btn" data-qfilter="Hard">[HARD]</button>
+          <button class="filter-btn" data-qfilter="unsolved">[UNSOLVED]</button>
+          <button class="filter-btn" data-qfilter="solved">[SOLVED]</button>
+          <button class="filter-btn" data-qfilter="upsolve">[UPSOLVE LATER]</button>
+        </div>
+
+        <div id="vaultQuestionsContainer" class="questions-pixel-grid">
+          <!-- Injected via JavaScript -->
+        </div>
+      </div>
+    </section>
+
+    <!-- ==========================================
+         VIEW 5: FULL ROADMAP / SCHEDULE (OCT 10 - 31)
+         ========================================== -->
+    <section class="view-section" id="tab-schedule">
+      <div class="schedule-table-card">
+        <div class="panel-title-bar">
+          <span>&gt;&gt; COMPLETE 22-DAY OA PROTOCOL ROADMAP</span>
+          <span class="hud-label">OCTOBER 10 - OCTOBER 31</span>
+        </div>
+
+        <div class="schedule-filters-bar">
+          <button class="filter-btn active" data-roadmap-filter="ALL">[ALL: 22]</button>
+          <button class="filter-btn" data-roadmap-filter="PENDING">[PENDING]</button>
+          <button class="filter-btn" data-roadmap-filter="COMPLETED">[COMPLETED]</button>
+          <button class="filter-btn" data-roadmap-filter="MISSED">[MISSED]</button>
+        </div>
+
+        <div id="roadmapGridContainer" class="contests-grid-list">
+          <!-- Injected via JavaScript -->
+        </div>
+      </div>
+    </section>
+
+    <!-- ==========================================
+         VIEW 6: SQL & PANDAS / DBMS MASTERY
+         ========================================== -->
+    <section class="view-section" id="tab-sql">
+      <div class="schedule-table-card">
+        <div class="panel-title-bar">
+          <span>&gt;&gt; SQL, PANDAS &amp; DBMS CURATED MASTERY [25 PROBLEMS]</span>
+          <span class="hud-label">WINDOW FUNCTIONS, GAPS &amp; ISLANDS, METRICS, PIVOT, JOINS, PANDAS</span>
+        </div>
+
+        <div class="schedule-filters-bar">
+          <button class="filter-btn active" data-sql-filter="ALL">[ALL: 25]</button>
+          <button class="filter-btn" data-sql-filter="Easy">[EASY]</button>
+          <button class="filter-btn" data-sql-filter="Medium">[MEDIUM]</button>
+          <button class="filter-btn" data-sql-filter="Hard">[HARD]</button>
+          <button class="filter-btn" data-sql-filter="unsolved">[UNSOLVED]</button>
+          <button class="filter-btn" data-sql-filter="solved">[SOLVED]</button>
+          <button class="filter-btn" data-sql-filter="upsolve">[REVISIT]</button>
+        </div>
+
+        <div id="sqlModulesContainer" style="display: flex; flex-direction: column; gap: 20px; margin-top: 10px;">
+          <!-- Injected via JavaScript -->
+        </div>
+      </div>
+    </section>
+
+
+
+    <!-- ==========================================
+         VIEW 8: BOOKS & RESOURCE ARCHIVE
+         ========================================== -->
+    <section class="view-section" id="tab-books">
+      <div class="schedule-table-card">
+        <div class="panel-title-bar">
+          <span>&gt;&gt; BOOKS &amp; STUDY MATERIALS ARCHIVE [PDF &amp; EPUB LIBRARY]</span>
+          <span class="hud-label">CURATED RESOURCES - 1-CLICK DOWNLOAD &amp; READING TRACKER</span>
+        </div>
+
+        <!-- Books Stats & Overview -->
+        <div class="books-progress-box">
+          <div class="books-stats-row">
+            <div style="flex: 1 1 300px;">
+              <span class="hud-label">READING &amp; MASTERY PROGRESS:</span>
+              <div class="exp-bar-container" style="margin-top: 6px; width: 100%;">
+                <div class="exp-bar-fill" id="booksExpBarFill" style="width: 0%;"></div>
+              </div>
+            </div>
+            <div class="books-stats-badges">
+              <span class="hud-val-badge accent-green" id="booksDoneBadge">READ: 0</span>
+              <span class="hud-val-badge accent-yellow" id="booksReadingBadge">READING: 0</span>
+              <span class="hud-val-badge accent-cyan" id="booksTotalBadge">TOTAL: 1</span>
+              <span class="hud-val-badge" id="booksSizeBadge">SIZE: 6.7 MB</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Filter & Search Controls -->
+        <div class="schedule-filters-bar" style="margin-top: 16px; align-items: center; justify-content: space-between;">
+          <div style="display: flex; flex-wrap: wrap; gap: 6px;" id="booksFilterButtons">
+            <button class="filter-btn active" data-book-filter="ALL">[ALL: <span id="filterAllCount">0</span>]</button>
+            <button class="filter-btn" data-book-filter="unread">[UNREAD]</button>
+            <button class="filter-btn" data-book-filter="reading">[READING]</button>
+            <button class="filter-btn" data-book-filter="completed">[COMPLETED]</button>
+          </div>
+          <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+            <input type="text" id="booksSearchInput" placeholder="SEARCH PDF BOOKS BY TITLE OR TOPIC..." class="pixel-select" style="font-size: 9px; min-width: 250px;">
+            <select id="booksSortSelect" class="pixel-select" style="font-size: 9px;">
+              <option value="title_asc">SORT: TITLE [A-Z]</option>
+              <option value="size_desc">SORT: SIZE [LARGE-SMALL]</option>
+              <option value="date_desc">SORT: DATE ADDED</option>
+              <option value="status">SORT: READING STATUS</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Books Grid Container -->
+        <div id="booksGridContainer" class="books-catalog-grid" style="margin-top: 18px;">
+          <!-- Injected via JavaScript -->
+        </div>
+
+      </div>
+    </section>
+
+  </main>
+
+  <!-- RETRO PIXEL CONFIRMATION / DETAIL MODAL -->
+  <div class="pixel-modal-backdrop" id="pixelModal">
+    <div class="pixel-modal-card">
+      <div class="modal-header">
+        <span class="modal-title" id="modalTitle">[SYSTEM DIALOG]</span>
+        <button class="modal-close-btn" id="modalCloseBtn">[X]</button>
+      </div>
+      <div id="modalBody"></div>
+    </div>
+  </div>
+
+  <!-- FOOTER -->
+  <footer class="arcade-footer">
+    <div>DSA GRINDER - VIRTUAL CONTEST &amp; OA TRACKER</div>
+    <div style="margin-top: 6px; color: var(--text-muted);">LOCAL PERSISTENCE VIA HTML5 STORAGE</div>
+  </footer>
+
+  <!-- SCRIPTS -->
+  <script src="data.js"></script>
+  <script src="books_data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

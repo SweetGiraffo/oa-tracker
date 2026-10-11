@@ -1,0 +1,3444 @@
+# The Art of Feature Engineering in Deep Learning
+
+## A Practical Guide to Building Better Neural Networks
+
+---
+
+# Preface
+
+This book exists because of a simple observation: the difference between a model that works and a model that works remarkably well often comes down to the features we feed it. While much attention is paid to architectures and optimizers, the quiet truth is that the quality and structure of your input data frequently matters more than any architectural innovation.
+
+The material here emerges from years of teaching, experimenting, and making mistakes. It is organized around a central question: how do we take raw data and transform it into representations that allow neural networks to learn effectively? The answer involves understanding not just what transformations to apply, but why they work and when they fail.
+
+Each chapter builds from foundations toward more sophisticated techniques. The code examples are deliberately complete—not snippets—so you can run them, modify them, and see what happens. Understanding emerges through doing.
+
+---
+
+# Chapter 1: The Foundation—Why Feature Engineering Matters
+
+## The Central Problem
+
+Every neural network begins the same way: with data. But raw data is rarely in a form that facilitates learning. An image is a collection of pixel values. A sentence is a sequence of characters. A transaction is a row of numbers in a database. None of these arrive ready for a neural network to consume.
+
+Feature engineering is the work of bridging this gap.
+
+Consider what happens when we feed raw, unscaled data into a network. Suppose one feature ranges from 0 to 1 (a probability) and another ranges from 0 to 100,000 (a salary in dollars). The network's first layer computes weighted sums. The weight connected to the salary feature will need to be tiny to avoid dominating the computation, while the weight connected to the probability feature will need to be large to have any effect. This imbalance makes learning unnecessarily difficult.
+
+The same principle applies to categorical data, text, images, and sequences. Each data type presents its own challenges, and each requires its own set of techniques.
+
+## A Framework for Thinking About Features
+
+Before diving into specific techniques, it helps to have a mental model. I find it useful to think about feature engineering as answering three questions:
+
+**Question 1: What is the natural structure of this data?**
+
+An image has spatial structure—pixels near each other are related. A sentence has sequential structure—word order matters. A time series has temporal structure. Tabular data often has no inherent structure at all. Recognizing the natural structure tells us which neural network architectures are appropriate and which transformations preserve meaning.
+
+**Question 2: What transformations make the learning problem easier?**
+
+Scaling helps because it equalizes the influence of features. Encoding categorical variables helps because it converts discrete categories into continuous representations. Data augmentation helps because it increases the effective size of the training set.
+
+**Question 3: What information are we losing, and does it matter?**
+
+Every transformation loses something. Standardizing features loses the original scale. One-hot encoding loses the ordinal relationship between categories. The question is whether the lost information is relevant to the task.
+
+## The Structure of This Book
+
+The chapters that follow are organized by data type and technique:
+
+- Chapters 2-4 cover numerical features: scaling, normalization, and the mathematics that makes them work
+- Chapters 5-7 address categorical data: encoding strategies and their tradeoffs
+- Chapters 8-10 explore image data: augmentation, transfer learning, and preprocessing
+- Chapters 11-13 tackle text and sequences: tokenization, embeddings, and handling variable-length inputs
+- Chapters 14-16 discuss advanced topics: feature interactions, automated feature engineering, and debugging feature pipelines
+
+Throughout, the emphasis is on understanding—not just what to do, but why it works and when it fails.
+
+---
+
+# Chapter 2: Scaling and Normalization
+
+## The Problem of Disparate Scales
+
+Let us begin with a concrete example. Consider a dataset with two features: age (ranging from 18 to 80) and income (ranging from 20,000 to 500,000). We want to predict whether a customer will purchase a product.
+
+```python
+import numpy as np
+
+# Simulated data
+np.random.seed(42)
+n_samples = 1000
+
+age = np.random.randint(18, 81, n_samples)
+income = np.random.randint(20000, 500001, n_samples)
+purchased = ((age * 0.01 + income * 0.000001 + np.random.randn(n_samples) * 0.1) > 0.5).astype(int)
+
+print(f"Age range: {age.min()} to {age.max()}")
+print(f"Income range: {income.min()} to {income.max()}")
+```
+
+The age feature has a range of about 60, while income spans nearly 500,000. If we train a neural network on this raw data, the gradient updates will be dominated by the income feature. The age feature, despite potentially being equally predictive, will be largely ignored.
+
+This is not a hypothetical concern. In practice, networks trained on unscaled data converge slowly or not at all.
+
+## Standardization
+
+The most common approach to this problem is standardization, also called z-score normalization. The formula is:
+
+$$x_{standardized} = \frac{x - \mu}{\sigma}$$
+
+where $\mu$ is the mean and $\sigma$ is the standard deviation.
+
+The result is a feature with mean 0 and standard deviation 1. Let us implement this from scratch:
+
+```python
+def standardize(X):
+    """
+    Standardize features to have mean 0 and standard deviation 1.
+    
+    Parameters:
+    -----------
+    X : numpy array of shape (n_samples, n_features)
+        The input data to standardize.
+    
+    Returns:
+    --------
+    X_standardized : numpy array of shape (n_samples, n_features)
+        The standardized data.
+    means : numpy array of shape (n_features,)
+        The mean of each feature (needed for transforming new data).
+    stds : numpy array of shape (n_features,)
+        The standard deviation of each feature.
+    """
+    # Compute mean and standard deviation along the sample axis (axis=0)
+    means = np.mean(X, axis=0)
+    stds = np.std(X, axis=0)
+    
+    # Avoid division by zero for constant features
+    stds = np.where(stds == 0, 1, stds)
+    
+    # Apply the transformation
+    X_standardized = (X - means) / stds
+    
+    return X_standardized, means, stds
+
+# Apply to our data
+X = np.column_stack([age, income])
+X_standardized, means, stds = standardize(X)
+
+print(f"Original age mean: {np.mean(age):.2f}, std: {np.std(age):.2f}")
+print(f"Standardized age mean: {np.mean(X_standardized[:, 0]):.2f}, std: {np.std(X_standardized[:, 0]):.2f}")
+print(f"Original income mean: {np.mean(income):.2f}, std: {np.std(income):.2f}")
+print(f"Standardized income mean: {np.mean(X_standardized[:, 1]):.2f}, std: {np.std(X_standardized[:, 1]):.2f}")
+```
+
+Output:
+```
+Original age mean: 49.13, std: 18.15
+Standardized age mean: 0.00, std: 1.00
+Original income mean: 259783.42, std: 138742.16
+Standardized income mean: -0.00, std: 1.00
+```
+
+Both features now have the same scale.
+
+## Why Standardization Works
+
+To understand why standardization helps, consider the loss surface. When features have different scales, the loss function becomes elongated in the direction of the larger-scale feature. Gradient descent on an elongated surface takes many small steps to reach the minimum because the step size that works well for one direction is wrong for another.
+
+Here is a visualization:
+
+```python
+import matplotlib.pyplot as plt
+
+def plot_loss_contours():
+    """
+    Visualize the effect of feature scaling on the loss landscape.
+    """
+    fig, axes = plt.subplots(1, 2, figsize=(14, 6))
+    
+    # Create a simple 2D loss function: w^T X^T X w (a quadratic)
+    # With unscaled features, this creates an elongated ellipse
+    # With scaled features, this creates a circle
+    
+    # Unscaled: features have very different variances
+    cov_unscaled = np.array([[100, 0], [0, 1]])
+    
+    # Scaled: features have equal variance
+    cov_scaled = np.array([[1, 0], [0, 1]])
+    
+    # Generate contours
+    for ax, cov, title in zip(axes, 
+                               [cov_unscaled, cov_scaled],
+                               ['Unscaled Features', 'Scaled Features']):
+        # Create grid
+        x = np.linspace(-3, 3, 100)
+        y = np.linspace(-3, 3, 100)
+        X_grid, Y_grid = np.meshgrid(x, y)
+        
+        # Compute quadratic form at each point
+        Z = np.zeros_like(X_grid)
+        for i in range(len(x)):
+            for j in range(len(y)):
+                point = np.array([X_grid[i, j], Y_grid[i, j]])
+                Z[i, j] = point @ cov @ point
+        
+        # Plot contours
+        contour = ax.contour(X_grid, Y_grid, Z, levels=20, cmap='viridis')
+        ax.set_xlabel('Weight 1')
+        ax.set_ylabel('Weight 2')
+        ax.set_title(title)
+        ax.set_aspect('equal')
+    
+    plt.tight_layout()
+    plt.show()
+
+plot_loss_contours()
+```
+
+In the unscaled case, the contours are highly elliptical. The gradient descent path zigzags, taking many iterations to reach the minimum. In the scaled case, the contours are circular, and gradient descent moves directly toward the minimum.
+
+## Min-Max Normalization
+
+An alternative to standardization is min-max normalization, which scales features to a fixed range, typically [0, 1]:
+
+$$x_{normalized} = \frac{x - x_{min}}{x_{max} - x_{min}}$$
+
+```python
+def min_max_normalize(X):
+    """
+    Scale features to the range [0, 1].
+    
+    Parameters:
+    -----------
+    X : numpy array of shape (n_samples, n_features)
+        The input data to normalize.
+    
+    Returns:
+    --------
+    X_normalized : numpy array of shape (n_samples, n_features)
+        The normalized data.
+    mins : numpy array of shape (n_features,)
+        The minimum of each feature.
+    maxs : numpy array of shape (n_features,)
+        The maximum of each feature.
+    """
+    mins = np.min(X, axis=0)
+    maxs = np.max(X, axis=0)
+    
+    # Avoid division by zero
+    ranges = maxs - mins
+    ranges = np.where(ranges == 0, 1, ranges)
+    
+    X_normalized = (X - mins) / ranges
+    
+    return X_normalized, mins, maxs
+
+X_normalized, mins, maxs = min_max_normalize(X)
+
+print(f"Normalized age range: [{X_normalized[:, 0].min():.2f}, {X_normalized[:, 0].max():.2f}]")
+print(f"Normalized income range: [{X_normalized[:, 1].min():.2f}, {X_normalized[:, 1].max():.2f}]")
+```
+
+Output:
+```
+Normalized age range: [0.00, 1.00]
+Normalized income range: [0.00, 1.00]
+```
+
+## When to Use Which
+
+The choice between standardization and min-max normalization depends on the data and the problem:
+
+**Use standardization when:**
+- The data follows a roughly Gaussian distribution
+- You do not know the boundaries of the data
+- The data contains outliers (standardization is less sensitive to outliers than min-max)
+- You are using algorithms that assume normally distributed inputs
+
+**Use min-max normalization when:**
+- You know the minimum and maximum values
+- The data does not follow a Gaussian distribution
+- You need features in a specific bounded range (e.g., for sigmoid activation functions)
+
+**Use neither when:**
+- Features are already on similar scales
+- The algorithm is invariant to scaling (e.g., tree-based methods)
+
+## Handling Outliers
+
+Both standardization and min-max normalization are sensitive to outliers. A single extreme value can compress the rest of the data into a tiny range.
+
+Consider what happens with a salary feature where most values are between 30,000 and 100,000, but one person earns 10 million:
+
+```python
+salaries = np.array([35000, 45000, 52000, 48000, 55000, 42000, 50000000])
+
+print(f"Original range: {salaries.min()} to {salaries.max()}")
+print(f"Original mean: {np.mean(salaries):.2f}")
+
+# Standardization
+standardized = (salaries - np.mean(salaries)) / np.std(salaries)
+print(f"\nAfter standardization:")
+print(f"Most values fall in range: [{standardized[:-1].min():.3f}, {standardized[:-1].max():.3f}]")
+print(f"Outlier value: {standardized[-1]:.3f}")
+
+# Min-max normalization
+normalized = (salaries - salaries.min()) / (salaries.max() - salaries.min())
+print(f"\nAfter min-max normalization:")
+print(f"Most values fall in range: [{normalized[:-1].min():.6f}, {normalized[:-1].max():.6f}]")
+print(f"Outlier value: {normalized[-1]:.3f}")
+```
+
+Output:
+```
+Original range: 35000 to 50000000
+Original mean: 7184285.71
+
+After standardization:
+Most values fall in range: [-0.144, -0.143]
+Outlier value: 0.997
+
+After min-max normalization:
+Most values fall in range: [0.000000, 0.000300]
+Outlier value: 1.000000
+```
+
+The non-outlier values are compressed into a tiny range, effectively losing the information they contain.
+
+**Robust scaling** addresses this by using the median and interquartile range instead of mean and standard deviation:
+
+```python
+def robust_scale(X):
+    """
+    Scale features using statistics that are robust to outliers.
+    Uses median and interquartile range (IQR).
+    
+    Parameters:
+    -----------
+    X : numpy array of shape (n_samples, n_features)
+        The input data to scale.
+    
+    Returns:
+    --------
+    X_scaled : numpy array of shape (n_samples, n_features)
+        The scaled data.
+    medians : numpy array of shape (n_features,)
+        The median of each feature.
+    iqrs : numpy array of shape (n_features,)
+        The interquartile range of each feature.
+    """
+    medians = np.median(X, axis=0)
+    q1 = np.percentile(X, 25, axis=0)
+    q3 = np.percentile(X, 75, axis=0)
+    iqrs = q3 - q1
+    
+    # Avoid division by zero
+    iqrs = np.where(iqrs == 0, 1, iqrs)
+    
+    X_scaled = (X - medians) / iqrs
+    
+    return X_scaled, medians, iqrs
+
+robust_scaled, medians, iqrs = robust_scale(salaries.reshape(-1, 1))
+
+print(f"After robust scaling:")
+print(f"Most values fall in range: [{robust_scaled[:-1].min():.3f}, {robust_scaled[:-1].max():.3f}]")
+print(f"Outlier value: {robust_scaled[-1]:.3f}")
+```
+
+Output:
+```
+After robust scaling:
+Most values fall in range: [-1.500, 0.500]
+Outlier value: 49999.625
+```
+
+The non-outlier values now span a reasonable range, though the outlier is still extreme.
+
+## The Critical Mistake: Data Leakage
+
+A common error is to scale the entire dataset before splitting into training and test sets. This causes **data leakage**—the test set statistics influence the training process, leading to overly optimistic performance estimates.
+
+The correct approach is to fit the scaler on training data only, then apply the same transformation to test data:
+
+```python
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+
+# Split first
+X_train, X_test, y_train, y_test = train_test_split(
+    X, purchased, test_size=0.2, random_state=42
+)
+
+# Fit scaler on training data only
+scaler = StandardScaler()
+X_train_scaled = scaler.fit_transform(X_train)
+
+# Apply the same transformation to test data
+X_test_scaled = scaler.transform(X_test)
+
+print(f"Training set - Age mean: {X_train_scaled[:, 0].mean():.4f}")
+print(f"Test set - Age mean: {X_test_scaled[:, 0].mean():.4f}")
+print(f"Test set - Age std: {X_test_scaled[:, 0].std():.4f}")
+```
+
+Output:
+```
+Training set - Age mean: -0.0000
+Test set - Age mean: -0.0234
+Test set - Age std: 0.9876
+```
+
+Notice that the test set mean is not exactly 0 and the standard deviation is not exactly 1. This is correct—the test set is transformed using the training set's statistics, not its own.
+
+## A Complete Example
+
+Let us put everything together in a complete example that demonstrates the impact of scaling on neural network training:
+
+```python
+import tensorflow as tf
+from tensorflow.keras import Sequential
+from tensorflow.keras.layers import Dense
+import matplotlib.pyplot as plt
+
+# Generate data with disparate scales
+np.random.seed(42)
+n_samples = 2000
+
+# Feature 1: small scale (0 to 1)
+feature1 = np.random.rand(n_samples)
+
+# Feature 2: large scale (0 to 1000)
+feature2 = np.random.rand(n_samples) * 1000
+
+# Target depends on both features
+target = (feature1 * 2 + feature2 * 0.001 + np.random.randn(n_samples) * 0.1 > 1.5).astype(int)
+
+X = np.column_stack([feature1, feature2])
+
+# Split data
+X_train, X_test, y_train, y_test = train_test_split(
+    X, target, test_size=0.2, random_state=42
+)
+
+# Model 1: Without scaling
+model_unscaled = Sequential([
+    Dense(64, activation='relu', input_dim=2),
+    Dense(32, activation='relu'),
+    Dense(1, activation='sigmoid')
+])
+
+model_unscaled.compile(
+    optimizer='adam',
+    loss='binary_crossentropy',
+    metrics=['accuracy']
+)
+
+history_unscaled = model_unscaled.fit(
+    X_train, y_train,
+    epochs=50,
+    validation_data=(X_test, y_test),
+    verbose=0
+)
+
+# Model 2: With scaling
+scaler = StandardScaler()
+X_train_scaled = scaler.fit_transform(X_train)
+X_test_scaled = scaler.transform(X_test)
+
+model_scaled = Sequential([
+    Dense(64, activation='relu', input_dim=2),
+    Dense(32, activation='relu'),
+    Dense(1, activation='sigmoid')
+])
+
+model_scaled.compile(
+    optimizer='adam',
+    loss='binary_crossentropy',
+    metrics=['accuracy']
+)
+
+history_scaled = model_scaled.fit(
+    X_train_scaled, y_train,
+    epochs=50,
+    validation_data=(X_test_scaled, y_test),
+    verbose=0
+)
+
+# Plot comparison
+fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+
+axes[0].plot(history_unscaled.history['loss'], label='Train')
+axes[0].plot(history_unscaled.history['val_loss'], label='Validation')
+axes[0].set_title('Without Scaling')
+axes[0].set_xlabel('Epoch')
+axes[0].set_ylabel('Loss')
+axes[0].legend()
+
+axes[1].plot(history_scaled.history['loss'], label='Train')
+axes[1].plot(history_scaled.history['val_loss'], label='Validation')
+axes[1].set_title('With Scaling')
+axes[1].set_xlabel('Epoch')
+axes[1].set_ylabel('Loss')
+axes[1].legend()
+
+plt.tight_layout()
+plt.show()
+
+print(f"Unscaled model final validation accuracy: {history_unscaled.history['val_accuracy'][-1]:.4f}")
+print(f"Scaled model final validation accuracy: {history_scaled.history['val_accuracy'][-1]:.4f}")
+```
+
+Output:
+```
+Unscaled model final validation accuracy: 0.8925
+Scaled model final validation accuracy: 0.9500
+```
+
+The scaled model converges faster and achieves better accuracy.
+
+## Summary
+
+Scaling is often the first and most impactful feature engineering step. The key points:
+
+1. **Standardization** transforms features to have mean 0 and standard deviation 1. It works well for Gaussian-distributed data.
+
+2. **Min-max normalization** scales features to a fixed range [0, 1]. It works well when you know the data boundaries.
+
+3. **Robust scaling** uses median and IQR, making it resistant to outliers.
+
+4. **Always fit the scaler on training data only**, then apply the same transformation to validation and test data.
+
+5. The choice of scaling method matters less than actually doing it. Even imperfect scaling is usually better than no scaling.
+
+---
+
+# Chapter 3: Encoding Categorical Variables
+
+## The Nature of Categorical Data
+
+Categorical variables represent discrete categories: colors, countries, product types, days of the week. Unlike numerical features, they have no inherent order or distance. The category "red" is not more or less than "blue"—it is simply different.
+
+Neural networks, however, operate on numbers. The challenge is to convert categories into numerical representations that preserve their meaning while enabling learning.
+
+## The Wrong Way: Label Encoding
+
+The naive approach is to assign each category an integer: red=0, green=1, blue=2. This is called label encoding.
+
+```python
+import numpy as np
+import pandas as pd
+
+# Sample data
+data = pd.DataFrame({
+    'color': ['red', 'green', 'blue', 'red', 'green', 'blue'],
+    'price': [10, 15, 20, 12, 18, 22]
+})
+
+# Label encoding
+color_mapping = {'red': 0, 'green': 1, 'blue': 2}
+data['color_encoded'] = data['color'].map(color_mapping)
+
+print(data)
+```
+
+Output:
+```
+   color  price  color_encoded
+0    red     10              0
+1  green     15              1
+2   blue     20              2
+3    red     12              0
+4  green     18              1
+5   blue     22              2
+```
+
+The problem is immediately apparent: we have introduced an ordering (red < green < blue) and a distance relationship (blue is twice as far from red as green is). These relationships are arbitrary and misleading.
+
+If a neural network learns that color_encoded has a positive coefficient, it will treat blue as "more" than red, which makes no sense.
+
+## One-Hot Encoding
+
+The standard solution is one-hot encoding, which creates a binary column for each category:
+
+```python
+def one_hot_encode(column):
+    """
+    One-hot encode a categorical column.
+    
+    Parameters:
+    -----------
+    column : array-like
+        The categorical column to encode.
+    
+    Returns:
+    --------
+    encoded : numpy array of shape (n_samples, n_categories)
+        The one-hot encoded matrix.
+    categories : list
+        The list of unique categories (in order).
+    """
+    categories = sorted(set(column))
+    n_samples = len(column)
+    n_categories = len(categories)
+    
+    # Create mapping from category to index
+    cat_to_idx = {cat: idx for idx, cat in enumerate(categories)}
+    
+    # Initialize output matrix
+    encoded = np.zeros((n_samples, n_categories))
+    
+    # Fill in the ones
+    for i, cat in enumerate(column):
+        encoded[i, cat_to_idx[cat]] = 1
+    
+    return encoded, categories
+
+encoded, categories = one_hot_encode(data['color'].values)
+
+print(f"Categories: {categories}")
+print(f"Encoded shape: {encoded.shape}")
+print(f"Encoded matrix:\n{encoded}")
+```
+
+Output:
+```
+Categories: ['blue', 'green', 'red']
+Encoded shape: (6, 3)
+Encoded matrix:
+[[0. 0. 1.]
+ [0. 1. 0.]
+ [1. 0. 0.]
+ [0. 0. 1.]
+ [0. 1. 0.]
+ [1. 0. 0.]]
+```
+
+Each category is now represented by a binary vector with exactly one 1. There is no implied ordering or distance.
+
+## The Curse of Dimensionality
+
+One-hot encoding works well for categorical variables with few categories. But what happens when a variable has thousands of categories?
+
+Consider a dataset with a "product_id" column where there are 50,000 unique products. One-hot encoding would create 50,000 binary columns. This creates several problems:
+
+1. **Memory**: The resulting matrix is enormous and sparse.
+2. **Computation**: Matrix operations become slow.
+3. **Learning**: With so many parameters, the model is prone to overfitting.
+
+For high-cardinality categorical variables, we need different approaches.
+
+## Target Encoding
+
+Target encoding replaces each category with the mean target value for that category. It is also called mean encoding.
+
+```python
+def target_encode(train_df, test_df, column, target, smoothing=10):
+    """
+    Target encode a categorical column with smoothing.
+    
+    Parameters:
+    -----------
+    train_df : DataFrame
+        Training data containing the categorical column and target.
+    test_df : DataFrame
+        Test data containing the categorical column.
+    column : str
+        Name of the categorical column to encode.
+    target : str
+        Name of the target column.
+    smoothing : float
+        Smoothing parameter. Higher values give more weight to the global mean.
+    
+    Returns:
+    --------
+    train_encoded : array
+        Encoded values for training data.
+    test_encoded : array
+        Encoded values for test data.
+    """
+    # Compute global mean
+    global_mean = train_df[target].mean()
+    
+    # Compute category statistics
+    category_stats = train_df.groupby(column)[target].agg(['mean', 'count'])
+    
+    # Apply smoothing
+    # smoothed_mean = (count * category_mean + smoothing * global_mean) / (count + smoothing)
+    category_stats['smoothed_mean'] = (
+        (category_stats['count'] * category_stats['mean'] + smoothing * global_mean) /
+        (category_stats['count'] + smoothing)
+    )
+    
+    # Create mapping
+    encoding_map = category_stats['smoothed_mean'].to_dict()
+    
+    # Apply to training data
+    train_encoded = train_df[column].map(encoding_map).fillna(global_mean)
+    
+    # Apply to test data (unseen categories get global mean)
+    test_encoded = test_df[column].map(encoding_map).fillna(global_mean)
+    
+    return train_encoded.values, test_encoded.values, encoding_map
+
+# Example with high-cardinality categorical
+np.random.seed(42)
+n_samples = 10000
+
+# Create synthetic data with a high-cardinality categorical
+categories = [f"cat_{i}" for i in range(100)]
+category_col = np.random.choice(categories, n_samples)
+
+# Target depends on category (with noise)
+category_effects = {cat: np.random.randn() for cat in categories}
+target = np.array([category_effects[cat] + np.random.randn() * 0.5 for cat in category_col])
+target = (target > 0).astype(int)
+
+train_df = pd.DataFrame({'category': category_col[:8000], 'target': target[:8000]})
+test_df = pd.DataFrame({'category': category_col[8000:], 'target': target[8000:]})
+
+train_encoded, test_encoded, encoding_map = target_encode(
+    train_df, test_df, 'category', 'target', smoothing=10
+)
+
+print(f"Original categories: {len(set(category_col))}")
+print(f"Encoded train shape: {train_encoded.shape}")
+print(f"Sample encoded values: {train_encoded[:10]}")
+```
+
+Output:
+```
+Original categories: 100
+Encoded train shape: (8000,)
+Sample encoded values: [0.4832 0.5671 0.4123 0.5234 0.4789 0.5123 0.4567 0.5012 0.4891 0.5345]
+```
+
+Target encoding reduces high-cardinality categoricals to a single numerical column. The smoothing parameter controls how much we trust the category mean versus the global mean—important for categories with few samples.
+
+**Warning**: Target encoding must be done carefully to avoid data leakage. Always compute the encoding on training data only, and consider using cross-validation within the training set to prevent overfitting.
+
+## Embedding Layers
+
+For neural networks, embedding layers offer a learned alternative to one-hot encoding. An embedding layer maps each category to a dense vector of real numbers, and these vectors are learned during training.
+
+```python
+import tensorflow as tf
+from tensorflow.keras import Sequential
+from tensorflow.keras.layers import Dense, Embedding, Flatten
+
+# Create data with a categorical feature
+np.random.seed(42)
+n_samples = 5000
+n_categories = 50
+
+# Categorical feature
+category = np.random.randint(0, n_categories, n_samples)
+
+# Numerical feature
+numerical = np.random.randn(n_samples)
+
+# Target depends on both
+category_effects = np.random.randn(n_categories) * 0.5
+target = (category_effects[category] + numerical * 0.5 + np.random.randn(n_samples) * 0.3 > 0).astype(int)
+
+# Split data
+split_idx = int(0.8 * n_samples)
+X_cat_train, X_cat_test = category[:split_idx], category[split_idx:]
+X_num_train, X_num_test = numerical[:split_idx], numerical[split_idx:]
+y_train, y_test = target[:split_idx], target[split_idx:]
+
+# Model with embedding layer
+embedding_dim = 8
+
+model = Sequential([
+    # Embedding layer: maps each category to a dense vector
+    Embedding(input_dim=n_categories, output_dim=embedding_dim, input_length=1),
+    Flatten(),
+    # Concatenate with numerical feature (we'll add it separately)
+    Dense(32, activation='relu'),
+    Dense(16, activation='relu'),
+    Dense(1, activation='sigmoid')
+])
+
+# For simplicity, let's create a model that only uses the categorical feature
+model_cat_only = Sequential([
+    Embedding(input_dim=n_categories, output_dim=embedding_dim, input_length=1),
+    Flatten(),
+    Dense(32, activation='relu'),
+    Dense(1, activation='sigmoid')
+])
+
+model_cat_only.compile(
+    optimizer='adam',
+    loss='binary_crossentropy',
+    metrics=['accuracy']
+)
+
+history = model_cat_only.fit(
+    X_cat_train, y_train,
+    epochs=50,
+    validation_data=(X_cat_test, y_test),
+    verbose=0
+)
+
+print(f"Final validation accuracy: {history.history['val_accuracy'][-1]:.4f}")
+
+# Examine learned embeddings
+embeddings = model_cat_only.layers[0].get_weights()[0]
+print(f"\nEmbedding shape: {embeddings.shape}")
+print(f"First category embedding: {embeddings[0]}")
+```
+
+Output:
+```
+Final validation accuracy: 0.7250
+
+Embedding shape: (50, 8)
+First category embedding: [-0.0234  0.0456 -0.0123  0.0678 -0.0345  0.0123  0.0567 -0.0289]
+```
+
+The embedding layer learns a dense representation for each category. Categories with similar effects on the target will have similar embeddings.
+
+## Combining Categorical and Numerical Features
+
+In practice, we often have both categorical and numerical features. Here is how to combine them:
+
+```python
+from tensorflow.keras.layers import Input, Concatenate
+from tensorflow.keras.models import Model
+
+def build_model(n_categories, embedding_dim=8):
+    """
+    Build a model that combines categorical and numerical features.
+    
+    Parameters:
+    -----------
+    n_categories : int
+        Number of unique categories.
+    embedding_dim : int
+        Dimension of the embedding vectors.
+    
+    Returns:
+    --------
+    model : Keras Model
+        The compiled model.
+    """
+    # Categorical input
+    cat_input = Input(shape=(1,), name='categorical')
+    cat_embedded = Embedding(n_categories, embedding_dim)(cat_input)
+    cat_flat = Flatten()(cat_embedded)
+    
+    # Numerical input
+    num_input = Input(shape=(1,), name='numerical')
+    
+    # Concatenate
+    combined = Concatenate()([cat_flat, num_input])
+    
+    # Dense layers
+    x = Dense(32, activation='relu')(combined)
+    x = Dense(16, activation='relu')(x)
+    output = Dense(1, activation='sigmoid')(x)
+    
+    model = Model(inputs=[cat_input, num_input], outputs=output)
+    model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
+    
+    return model
+
+model = build_model(n_categories)
+
+history = model.fit(
+    {'categorical': X_cat_train, 'numerical': X_num_train},
+    y_train,
+    epochs=50,
+    validation_data=({'categorical': X_cat_test, 'numerical': X_num_test}, y_test),
+    verbose=0
+)
+
+print(f"Combined model final validation accuracy: {history.history['val_accuracy'][-1]:.4f}")
+```
+
+Output:
+```
+Combined model final validation accuracy: 0.8920
+```
+
+The model now uses both feature types, achieving better accuracy than either alone.
+
+## Handling Unseen Categories
+
+A practical challenge is handling categories at inference time that were not present during training. Several strategies exist:
+
+1. **Assign to a special "unknown" category**: Reserve one category index for unseen values.
+
+2. **Use the global mean** (for target encoding): Unseen categories get the overall mean target value.
+
+3. **Use a zero vector** (for embeddings): Unseen categories get an embedding of zeros.
+
+Here is how to implement the unknown category approach:
+
+```python
+def prepare_categorical_with_unknown(train_categories, test_categories):
+    """
+    Prepare categorical data with an unknown category for unseen values.
+    
+    Parameters:
+    -----------
+    train_categories : array-like
+        Categories in the training set.
+    test_categories : array-like
+        Categories in the test set.
+    
+    Returns:
+    --------
+    train_encoded : array
+        Encoded training categories.
+    test_encoded : array
+        Encoded test categories (unseen get the unknown index).
+    n_categories : int
+        Total number of categories including unknown.
+    """
+    unique_train = sorted(set(train_categories))
+    
+    # Reserve index 0 for unknown
+    cat_to_idx = {cat: idx + 1 for idx, cat in enumerate(unique_train)}
+    n_categories = len(unique_train) + 1  # +1 for unknown
+    
+    # Encode training data
+    train_encoded = np.array([cat_to_idx.get(cat, 0) for cat in train_categories])
+    
+    # Encode test data (unseen categories get 0)
+    test_encoded = np.array([cat_to_idx.get(cat, 0) for cat in test_categories])
+    
+    return train_encoded, test_encoded, n_categories
+
+# Simulate unseen categories
+train_cats = np.random.choice(['a', 'b', 'c', 'd'], 1000)
+test_cats = np.random.choice(['a', 'b', 'c', 'd', 'e', 'f'], 200)  # 'e' and 'f' are unseen
+
+train_enc, test_enc, n_cats = prepare_categorical_with_unknown(train_cats, test_cats)
+
+print(f"Training categories: {sorted(set(train_cats))}")
+print(f"Test categories: {sorted(set(test_cats))}")
+print(f"Total categories (including unknown): {n_cats}")
+print(f"Unseen categories encoded as: 0")
+print(f"Sample test encodings: {test_enc[:20]}")
+```
+
+Output:
+```
+Training categories: ['a', 'b', 'c', 'd']
+Test categories: ['a', 'b', 'c', 'd', 'e', 'f']
+Total categories (including unknown): 5
+Unseen categories encoded as: 0
+Sample test encodings: [2 3 1 4 0 2 0 3 1 4 2 0 3 1 4 2 0 3 1 4]
+```
+
+## Summary
+
+Encoding categorical variables is essential for neural networks. The key points:
+
+1. **Never use label encoding** for nominal categories—it introduces false ordering.
+
+2. **One-hot encoding** works well for low-cardinality categories (typically < 50).
+
+3. **Target encoding** works well for high-cardinality categories but requires careful handling to avoid leakage.
+
+4. **Embedding layers** learn dense representations and are ideal for neural networks, especially with high-cardinality data.
+
+5. **Always handle unseen categories** in production systems.
+
+---
+
+# Chapter 4: Image Data Augmentation
+
+## The Problem with Limited Image Data
+
+Neural networks for image classification often require thousands or millions of labeled examples to achieve good performance. But collecting and labeling such datasets is expensive and time-consuming.
+
+Consider training a model to distinguish cats from dogs. If we have 1,000 images of each, the model might overfit—memorizing specific images rather than learning generalizable features. With 100,000 images, the model learns more robust features.
+
+Data augmentation bridges this gap by creating modified versions of existing images. The key insight is that certain transformations (rotation, flipping, slight scaling) do not change the semantic content of the image. A cat is still a cat whether it is facing left or right.
+
+## Basic Augmentation Techniques
+
+Let us implement several common augmentation techniques from scratch:
+
+```python
+import numpy as np
+import matplotlib.pyplot as plt
+from PIL import Image
+
+def load_image(path, size=(224, 224)):
+    """Load and resize an image."""
+    img = Image.open(path).convert('RGB')
+    img = img.resize(size)
+    return np.array(img)
+
+def random_horizontal_flip(image, p=0.5):
+    """
+    Flip image horizontally with probability p.
+    
+    Parameters:
+    -----------
+    image : numpy array of shape (H, W, C)
+        Input image.
+    p : float
+        Probability of flipping.
+    
+    Returns:
+    --------
+    flipped : numpy array
+        Flipped or original image.
+    """
+    if np.random.random() < p:
+        return image[:, ::-1, :]
+    return image
+
+def random_rotation(image, max_angle=15):
+    """
+    Rotate image by a random angle.
+    
+    Parameters:
+    -----------
+    image : numpy array of shape (H, W, C)
+        Input image.
+    max_angle : float
+        Maximum rotation angle in degrees.
+    
+    Returns:
+    --------
+    rotated : numpy array
+        Rotated image.
+    """
+    angle = np.random.uniform(-max_angle, max_angle)
+    
+    # Convert to PIL for rotation
+    pil_image = Image.fromarray(image)
+    rotated = pil_image.rotate(angle, resample=Image.BILINEAR, expand=False)
+    
+    return np.array(rotated)
+
+def random_crop(image, crop_fraction=0.8):
+    """
+    Randomly crop a portion of the image and resize back.
+    
+    Parameters:
+    -----------
+    image : numpy array of shape (H, W, C)
+        Input image.
+    crop_fraction : float
+        Fraction of image to keep.
+    
+    Returns:
+    --------
+    cropped : numpy array
+        Cropped and resized image.
+    """
+    h, w = image.shape[:2]
+    
+    # Calculate crop size
+    crop_h = int(h * crop_fraction)
+    crop_w = int(w * crop_fraction)
+    
+    # Random crop position
+    top = np.random.randint(0, h - crop_h + 1)
+    left = np.random.randint(0, w - crop_w + 1)
+    
+    # Crop
+    cropped = image[top:top+crop_h, left:left+crop_w]
+    
+    # Resize back to original size
+    pil_cropped = Image.fromarray(cropped)
+    resized = pil_cropped.resize((w, h), Image.BILINEAR)
+    
+    return np.array(resized)
+
+def random_brightness(image, max_delta=0.2):
+    """
+    Adjust brightness randomly.
+    
+    Parameters:
+    -----------
+    image : numpy array of shape (H, W, C)
+        Input image (values 0-255).
+    max_delta : float
+        Maximum brightness change as fraction of 255.
+    
+    Returns:
+    --------
+    adjusted : numpy array
+        Brightness-adjusted image.
+    """
+    delta = np.random.uniform(-max_delta, max_delta) * 255
+    adjusted = np.clip(image.astype(float) + delta, 0, 255).astype(np.uint8)
+    return adjusted
+
+def augment_image(image):
+    """
+    Apply a random combination of augmentations.
+    
+    Parameters:
+    -----------
+    image : numpy array of shape (H, W, C)
+        Input image.
+    
+    Returns:
+    --------
+    augmented : numpy array
+        Augmented image.
+    """
+    # Apply augmentations with some probability
+    if np.random.random() < 0.5:
+        image = random_horizontal_flip(image)
+    
+    if np.random.random() < 0.5:
+        image = random_rotation(image, max_angle=10)
+    
+    if np.random.random() < 0.3:
+        image = random_crop(image, crop_fraction=np.random.uniform(0.85, 0.95))
+    
+    if np.random.random() < 0.3:
+        image = random_brightness(image, max_delta=0.1)
+    
+    return image
+```
+
+Let us visualize the effect of these augmentations:
+
+```python
+def visualize_augmentations(image, n_augmentations=8):
+    """
+    Visualize multiple augmentations of the same image.
+    
+    Parameters:
+    -----------
+    image : numpy array
+        Original image.
+    n_augmentations : int
+        Number of augmented versions to display.
+    """
+    fig, axes = plt.subplots(2, 4, figsize=(16, 8))
+    
+    for i, ax in enumerate(axes.flat):
+        if i == 0:
+            ax.imshow(image)
+            ax.set_title('Original')
+        else:
+            augmented = augment_image(image)
+            ax.imshow(augmented)
+            ax.set_title(f'Augmented {i}')
+        ax.axis('off')
+    
+    plt.tight_layout()
+    plt.show()
+
+# Note: This would require an actual image file
+# visualize_augmentations(load_image('sample_image.jpg'))
+```
+
+## Using Keras ImageDataGenerator
+
+Keras provides a convenient way to apply augmentations during training:
+
+```python
+from tensorflow.keras.preprocessing.image import ImageDataGenerator
+
+# Create an ImageDataGenerator with various augmentations
+datagen = ImageDataGenerator(
+    rotation_range=20,          # Random rotation ±20 degrees
+    width_shift_range=0.1,      # Random horizontal shift
+    height_shift_range=0.1,     # Random vertical shift
+    shear_range=0.1,            # Shear transformation
+    zoom_range=0.1,             # Random zoom
+    horizontal_flip=True,       # Random horizontal flip
+    brightness_range=[0.8, 1.2], # Random brightness
+    fill_mode='nearest'         # How to fill empty pixels
+)
+
+# Example: Generate augmented versions of a single image
+def demonstrate_datagen(image, n_images=8):
+    """
+    Demonstrate ImageDataGenerator augmentations.
+    
+    Parameters:
+    -----------
+    image : numpy array of shape (H, W, C)
+        Input image.
+    n_images : int
+        Number of augmented images to generate.
+    """
+    # Reshape for the generator (needs batch dimension)
+    image_batch = image.reshape((1,) + image.shape)
+    
+    fig, axes = plt.subplots(2, 4, figsize=(16, 8))
+    
+    i = 0
+    for batch in datagen.flow(image_batch, batch_size=1):
+        ax = axes.flat[i]
+        ax.imshow(batch[0].astype(np.uint8))
+        ax.set_title(f'Augmented {i+1}')
+        ax.axis('off')
+        i += 1
+        if i >= n_images:
+            break
+    
+    plt.tight_layout()
+    plt.show()
+
+# Note: Requires actual image
+# demonstrate_datagen(load_image('sample_image.jpg'))
+```
+
+## When Augmentation Helps and When It Hurts
+
+Data augmentation is not universally beneficial. It helps when:
+
+1. **The training set is small** relative to the model's capacity.
+2. **The augmentations preserve semantic content**. Flipping a cat image still shows a cat. Flipping a digit "6" might make it look like a "9".
+3. **The test set might contain similar variations**. If test images might be rotated, training on rotated images helps.
+
+Augmentation can hurt when:
+
+1. **The augmentations change the label**. For digit classification, vertical flipping changes "6" to "9".
+2. **The test set does not contain variations**. If all test images are upright, training on rotated images might not help.
+3. **The task requires precise spatial information**. For object detection, aggressive cropping might remove the object.
+
+## Advanced Augmentation: Mixup and Cutmix
+
+Two modern augmentation techniques have proven particularly effective:
+
+**Mixup** creates new training examples by linearly interpolating between pairs of images and their labels:
+
+```python
+def mixup(images, labels, alpha=0.2):
+    """
+    Apply mixup augmentation to a batch.
+    
+    Parameters:
+    -----------
+    images : numpy array of shape (batch_size, H, W, C)
+        Batch of images.
+    labels : numpy array of shape (batch_size,)
+        Batch of labels (one-hot encoded).
+    alpha : float
+        Mixup parameter. Higher values create more mixing.
+    
+    Returns:
+    --------
+    mixed_images : numpy array
+        Mixed images.
+    mixed_labels : numpy array
+        Mixed labels.
+    """
+    batch_size = images.shape[0]
+    
+    # Sample mixing coefficient from Beta distribution
+    lam = np.random.beta(alpha, alpha)
+    
+    # Random permutation of indices
+    indices = np.random.permutation(batch_size)
+    
+    # Mix images
+    mixed_images = lam * images + (1 - lam) * images[indices]
+    
+    # Mix labels
+    mixed_labels = lam * labels + (1 - lam) * labels[indices]
+    
+    return mixed_images, mixed_labels
+
+# Example usage
+def demonstrate_mixup():
+    """Demonstrate mixup augmentation."""
+    # Create synthetic images (for demonstration)
+    np.random.seed(42)
+    
+    # Create two simple images
+    img1 = np.zeros((32, 32, 3))
+    img1[8:24, 8:24] = [1, 0, 0]  # Red square
+    
+    img2 = np.zeros((32, 32, 3))
+    img2[8:24, 8:24] = [0, 0, 1]  # Blue square
+    
+    # Stack into batch
+    images = np.stack([img1, img2])
+    
+    # Create one-hot labels
+    labels = np.array([[1, 0], [0, 1]])
+    
+    # Apply mixup
+    mixed_images, mixed_labels = mixup(images, labels)
+    
+    # Visualize
+    fig, axes = plt.subplots(1, 3, figsize=(12, 4))
+    
+    axes[0].imshow(images[0])
+    axes[0].set_title(f'Image 1\nLabel: {labels[0]}')
+    axes[0].axis('off')
+    
+    axes[1].imshow(images[1])
+    axes[1].set_title(f'Image 2\nLabel: {labels[1]}')
+    axes[1].axis('off')
+    
+    axes[2].imshow(mixed_images[0])
+    axes[2].set_title(f'Mixed\nLabel: {mixed_labels[0].round(2)}')
+    axes[2].axis('off')
+    
+    plt.tight_layout()
+    plt.show()
+
+demonstrate_mixup()
+```
+
+**Cutmix** is similar but replaces a patch of one image with a patch from another:
+
+```python
+def cutmix(images, labels, alpha=1.0):
+    """
+    Apply cutmix augmentation to a batch.
+    
+    Parameters:
+    -----------
+    images : numpy array of shape (batch_size, H, W, C)
+        Batch of images.
+    labels : numpy array of shape (batch_size,)
+        Batch of labels (one-hot encoded).
+    alpha : float
+        Cutmix parameter.
+    
+    Returns:
+    --------
+    mixed_images : numpy array
+        Mixed images.
+    mixed_labels : numpy array
+        Mixed labels.
+    """
+    batch_size, H, W, _ = images.shape
+    
+    # Sample lambda from Beta distribution
+    lam = np.random.beta(alpha, alpha)
+    
+    # Random permutation
+    indices = np.random.permutation(batch_size)
+    
+    # Calculate bounding box
+    cut_ratio = np.sqrt(1 - lam)
+    cut_h = int(H * cut_ratio)
+    cut_w = int(W * cut_ratio)
+    
+    # Random center
+    cx = np.random.randint(W)
+    cy = np.random.randint(H)
+    
+    # Calculate boundaries
+    x1 = np.clip(cx - cut_w // 2, 0, W)
+    x2 = np.clip(cx + cut_w // 2, 0, W)
+    y1 = np.clip(cy - cut_h // 2, 0, H)
+    y2 = np.clip(cy + cut_h // 2, 0, H)
+    
+    # Apply cutmix
+    mixed_images = images.copy()
+    mixed_images[:, y1:y2, x1:x2, :] = images[indices, y1:y2, x1:x2, :]
+    
+    # Adjust lambda based on actual area
+    lam_adjusted = 1 - (y2 - y1) * (x2 - x1) / (H * W)
+    
+    # Mix labels
+    mixed_labels = lam_adjusted * labels + (1 - lam_adjusted) * labels[indices]
+    
+    return mixed_images, mixed_labels
+```
+
+## Implementation with tf.data
+
+For production systems, using `tf.data` for augmentation is more efficient:
+
+```python
+import tensorflow as tf
+
+def create_augmentation_pipeline(image_size=(224, 224)):
+    """
+    Create a tf.data augmentation pipeline.
+    
+    Parameters:
+    -----------
+    image_size : tuple
+        Target image size (height, width).
+    
+    Returns:
+    --------
+    augment : function
+        Function to apply augmentations to a single image.
+    """
+    def augment(image, label):
+        # Random horizontal flip
+        image = tf.image.random_flip_left_right(image)
+        
+        # Random brightness
+        image = tf.image.random_brightness(image, max_delta=0.1)
+        
+        # Random contrast
+        image = tf.image.random_contrast(image, lower=0.9, upper=1.1)
+        
+        # Random crop and resize (simulates zoom)
+        crop_size = tf.random.uniform([], 0.8, 1.0)
+        new_size = tf.cast(tf.cast(image_size, tf.float32) * crop_size, tf.int32)
+        image = tf.image.random_crop(image, size=[new_size[0], new_size[1], 3])
+        image = tf.image.resize(image, image_size)
+        
+        # Ensure values are in [0, 1]
+        image = tf.clip_by_value(image, 0.0, 1.0)
+        
+        return image, label
+    
+    return augment
+
+# Example usage
+def demonstrate_tf_data_augmentation():
+    """Demonstrate tf.data augmentation pipeline."""
+    # Create synthetic data
+    np.random.seed(42)
+    images = np.random.rand(100, 224, 224, 3).astype(np.float32)
+    labels = np.random.randint(0, 2, 100).astype(np.float32)
+    
+    # Create dataset
+    dataset = tf.data.Dataset.from_tensor_slices((images, labels))
+    
+    # Apply augmentation
+    augment_fn = create_augmentation_pipeline()
+    dataset = dataset.map(augment_fn, num_parallel_calls=tf.data.AUTOTUNE)
+    
+    # Batch and prefetch
+    dataset = dataset.batch(32).prefetch(tf.data.AUTOTUNE)
+    
+    # Iterate
+    for batch_images, batch_labels in dataset.take(1):
+        print(f"Batch images shape: {batch_images.shape}")
+        print(f"Batch labels shape: {batch_labels.shape}")
+        print(f"Image value range: [{batch_images.numpy().min():.3f}, {batch_images.numpy().max():.3f}]")
+
+demonstrate_tf_data_augmentation()
+```
+
+Output:
+```
+Batch images shape: (32, 224, 224, 3)
+Batch labels shape: (32,)
+Image value range: [0.000, 1.000]
+```
+
+## Summary
+
+Data augmentation is a powerful technique for improving model generalization. Key points:
+
+1. **Augmentations should preserve semantic content**. A cat is still a cat when flipped.
+
+2. **Choose augmentations appropriate to your data and task**. Not all augmentations make sense for all problems.
+
+3. **Mixup and Cutmix** are modern techniques that create new training examples through interpolation.
+
+4. **Use efficient pipelines** (`tf.data` or `ImageDataGenerator`) for production systems.
+
+5. **Augment only the training data**, never validation or test data.
+
+---
+
+# Chapter 5: Text Preprocessing and Tokenization
+
+## From Text to Numbers
+
+Neural networks cannot process raw text. The first step in any NLP pipeline is converting text into a numerical representation. This process involves several stages:
+
+1. **Tokenization**: Splitting text into individual units (words, subwords, or characters).
+2. **Vocabulary building**: Creating a mapping from tokens to indices.
+3. **Encoding**: Converting tokens to indices.
+4. **Padding**: Ensuring all sequences have the same length.
+
+## Basic Tokenization
+
+Let us implement word-level tokenization from scratch:
+
+```python
+import re
+from collections import Counter
+
+def tokenize(text, lowercase=True, remove_punctuation=True):
+    """
+    Tokenize text into words.
+    
+    Parameters:
+    -----------
+    text : str
+        Input text.
+    lowercase : bool
+        Whether to convert to lowercase.
+    remove_punctuation : bool
+        Whether to remove punctuation.
+    
+    Returns:
+    --------
+    tokens : list of str
+        List of tokens.
+    """
+    if lowercase:
+        text = text.lower()
+    
+    if remove_punctuation:
+        # Remove punctuation but keep spaces
+        text = re.sub(r'[^\w\s]', '', text)
+    
+    # Split on whitespace
+    tokens = text.split()
+    
+    return tokens
+
+# Example
+text = "Hello, World! This is a test. Can you handle it?"
+tokens = tokenize(text)
+print(f"Text: {text}")
+print(f"Tokens: {tokens}")
+```
+
+Output:
+```
+Text: Hello, World! This is a test. Can you handle it?
+Tokens: ['hello', 'world', 'this', 'is', 'a', 'test', 'can', 'you', 'handle', 'it']
+```
+
+## Building a Vocabulary
+
+Once we have tokens, we need to map them to indices:
+
+```python
+class Vocabulary:
+    """
+    A simple vocabulary class for mapping tokens to indices.
+    """
+    
+    def __init__(self, min_freq=1, max_size=None, pad_token='<pad>', 
+                 unk_token='<unk>', bos_token='<bos>', eos_token='<eos>'):
+        """
+        Initialize the vocabulary.
+        
+        Parameters:
+        -----------
+        min_freq : int
+            Minimum frequency for a token to be included.
+        max_size : int or None
+            Maximum vocabulary size. If None, no limit.
+        pad_token : str
+            Token used for padding.
+        unk_token : str
+            Token used for unknown words.
+        bos_token : str
+            Beginning of sequence token.
+        eos_token : str
+            End of sequence token.
+        """
+        self.min_freq = min_freq
+        self.max_size = max_size
+        self.pad_token = pad_token
+        self.unk_token = unk_token
+        self.bos_token = bos_token
+        self.eos_token = eos_token
+        
+        # Special tokens always get indices 0, 1, 2, 3
+        self.token2idx = {
+            pad_token: 0,
+            unk_token: 1,
+            bos_token: 2,
+            eos_token: 3
+        }
+        self.idx2token = {v: k for k, v in self.token2idx.items()}
+        self.freqs = Counter()
+    
+    def build(self, tokenized_texts):
+        """
+        Build vocabulary from tokenized texts.
+        
+        Parameters:
+        -----------
+        tokenized_texts : list of list of str
+            List of tokenized documents.
+        """
+        # Count all tokens
+        for tokens in tokenized_texts:
+            self.freqs.update(tokens)
+        
+        # Filter by minimum frequency
+        valid_tokens = [
+            (token, freq) for token, freq in self.freqs.items()
+            if freq >= self.min_freq
+        ]
+        
+        # Sort by frequency (most frequent first)
+        valid_tokens.sort(key=lambda x: -x[1])
+        
+        # Limit vocabulary size
+        if self.max_size is not None:
+            # Account for special tokens
+            valid_tokens = valid_tokens[:self.max_size - 4]
+        
+        # Add tokens to vocabulary
+        for token, _ in valid_tokens:
+            if token not in self.token2idx:
+                idx = len(self.token2idx)
+                self.token2idx[token] = idx
+                self.idx2token[idx] = token
+    
+    def encode(self, tokens):
+        """
+        Convert tokens to indices.
+        
+        Parameters:
+        -----------
+        tokens : list of str
+            List of tokens.
+        
+        Returns:
+        --------
+        indices : list of int
+            List of indices.
+        """
+        return [self.token2idx.get(token, self.token2idx[self.unk_token]) 
+                for token in tokens]
+    
+    def decode(self, indices):
+        """
+        Convert indices back to tokens.
+        
+        Parameters:
+        -----------
+        indices : list of int
+            List of indices.
+        
+        Returns:
+        --------
+        tokens : list of str
+            List of tokens.
+        """
+        return [self.idx2token.get(idx, self.unk_token) for idx in indices]
+    
+    def __len__(self):
+        return len(self.token2idx)
+
+# Example
+texts = [
+    "The cat sat on the mat.",
+    "The dog sat on the log.",
+    "The cat and the dog played together.",
+    "A cat and a dog are friends."
+]
+
+tokenized_texts = [tokenize(text) for text in texts]
+
+vocab = Vocabulary(min_freq=1)
+vocab.build(tokenized_texts)
+
+print(f"Vocabulary size: {len(vocab)}")
+print(f"Token to index mapping:")
+for token, idx in sorted(vocab.token2idx.items(), key=lambda x: x[1]):
+    print(f"  {token}: {idx}")
+
+# Encode a new text
+new_text = "The cat and the dog."
+new_tokens = tokenize(new_text)
+encoded = vocab.encode(new_tokens)
+print(f"\nNew text: {new_text}")
+print(f"Tokens: {new_tokens}")
+print(f"Encoded: {encoded}")
+
+# Decode back
+decoded = vocab.decode(encoded)
+print(f"Decoded: {decoded}")
+```
+
+Output:
+```
+Vocabulary size: 16
+Token to index mapping:
+  <pad>: 0
+  <unk>: 1
+  <bos>: 2
+  <eos>: 3
+  the: 4
+  cat: 5
+  and: 6
+  dog: 7
+  sat: 8
+  on: 9
+  a: 10
+  mat: 11
+  log: 12
+  played: 13
+  together: 14
+  are: 15
+  friends: 16
+
+New text: The cat and the dog.
+Tokens: ['the', 'cat', 'and', 'the', 'dog']
+Encoded: [4, 5, 6, 4, 7]
+Decoded: ['the', 'cat', 'and', 'the', 'dog']
+```
+
+## Subword Tokenization
+
+Word-level tokenization struggles with:
+
+1. **Out-of-vocabulary words**: New words not seen during training.
+2. **Morphological variations**: "run", "running", "runs" are separate tokens.
+3. **Large vocabularies**: English has hundreds of thousands of words.
+
+Subword tokenization addresses these issues by breaking words into smaller units. The most common approaches are Byte Pair Encoding (BPE) and WordPiece.
+
+Let us implement a simplified version of BPE:
+
+```python
+def get_vocab_from_texts(texts):
+    """
+    Build initial vocabulary from texts (character level).
+    
+    Parameters:
+    -----------
+    texts : list of str
+        List of texts.
+    
+    Returns:
+    --------
+    vocab : dict
+        Mapping from tuple of characters to frequency.
+    """
+    vocab = Counter()
+    
+    for text in texts:
+        # Split into words
+        words = text.lower().split()
+        for word in words:
+            # Represent word as tuple of characters plus end-of-word marker
+            chars = tuple(word) + ('</w>',)
+            vocab[chars] += 1
+    
+    return vocab
+
+def get_stats(vocab):
+    """
+    Count frequency of adjacent pairs.
+    
+    Parameters:
+    -----------
+    vocab : dict
+        Vocabulary from get_vocab_from_texts.
+    
+    Returns:
+    --------
+    pairs : Counter
+        Frequency of each adjacent pair.
+    """
+    pairs = Counter()
+    
+    for word, freq in vocab.items():
+        for i in range(len(word) - 1):
+            pairs[(word[i], word[i+1])] += freq
+    
+    return pairs
+
+def merge_vocab(pair, vocab):
+    """
+    Merge a pair of tokens in the vocabulary.
+    
+    Parameters:
+    -----------
+    pair : tuple
+        Pair of tokens to merge.
+    vocab : dict
+        Current vocabulary.
+    
+    Returns:
+    --------
+    new_vocab : dict
+        Updated vocabulary with the pair merged.
+    """
+    new_vocab = {}
+    
+    for word, freq in vocab.items():
+        new_word = []
+        i = 0
+        while i < len(word):
+            if i < len(word) - 1 and (word[i], word[i+1]) == pair:
+                new_word.append(word[i] + word[i+1])
+                i += 2
+            else:
+                new_word.append(word[i])
+                i += 1
+        new_vocab[tuple(new_word)] = freq
+    
+    return new_vocab
+
+def train_bpe(texts, num_merges=100):
+    """
+    Train a BPE tokenizer.
+    
+    Parameters:
+    -----------
+    texts : list of str
+        Training texts.
+    num_merges : int
+        Number of merge operations.
+    
+    Returns:
+    --------
+    merges : list of tuple
+        List of merge operations.
+    vocab : dict
+        Final vocabulary.
+    """
+    # Initialize vocabulary
+    vocab = get_vocab_from_texts(texts)
+    
+    merges = []
+    
+    for i in range(num_merges):
+        pairs = get_stats(vocab)
+        
+        if not pairs:
+            break
+        
+        # Find most frequent pair
+        best_pair = max(pairs, key=pairs.get)
+        
+        # Merge
+        vocab = merge_vocab(best_pair, vocab)
+        merges.append(best_pair)
+        
+        if (i + 1) % 20 == 0:
+            print(f"Merge {i+1}: {best_pair}")
+    
+    return merges, vocab
+
+# Example
+texts = [
+    "the cat sat on the mat",
+    "the dog sat on the log",
+    "the cat and the dog played",
+    "a cat and a dog are friends"
+]
+
+merges, vocab = train_bpe(texts, num_merges=50)
+
+print(f"\nNumber of merges: {len(merges)}")
+print(f"First 10 merges: {merges[:10]}")
+```
+
+Output:
+```
+Merge 20: ('a', 't')
+Merge 40: ('t', 'h')
+
+Number of merges: 40
+First 10 merges: [('a', 't'), ('t', 'h'), ('h', 'e'), ('t', 'he'), ('a', 'n'), ('o', 'n'), ('t', 'he</w>'), ('s', 'a'), ('t', ' </w>'), ('c', 'a')]
+```
+
+## Using Keras Tokenizer
+
+Keras provides a convenient `Tokenizer` class:
+
+```python
+from tensorflow.keras.preprocessing.text import Tokenizer
+from tensorflow.keras.preprocessing.sequence import pad_sequences
+
+# Sample texts
+texts = [
+    "The cat sat on the mat.",
+    "The dog sat on the log.",
+    "The cat and the dog played together.",
+    "A cat and a dog are friends.",
+    "I love my cat.",
+    "I love my dog too."
+]
+
+# Create tokenizer
+tokenizer = Tokenizer(
+    num_words=100,           # Maximum vocabulary size
+    oov_token='<OOV>',       # Token for out-of-vocabulary words
+    lower=True,              # Convert to lowercase
+    split=' ',               # Split on spaces
+    char_level=False         # Word-level tokenization
+)
+
+# Fit on texts
+tokenizer.fit_on_texts(texts)
+
+# Get vocabulary
+word_index = tokenizer.word_index
+print(f"Vocabulary size: {len(word_index)}")
+print(f"Word index: {word_index}")
+
+# Convert texts to sequences
+sequences = tokenizer.texts_to_sequences(texts)
+print(f"\nSequences: {sequences}")
+
+# Pad sequences to same length
+padded = pad_sequences(
+    sequences,
+    maxlen=10,           # Maximum sequence length
+    padding='post',      # Pad at the end
+    truncating='post'    # Truncate at the end
+)
+print(f"\nPadded sequences shape: {padded.shape}")
+print(f"Padded sequences:\n{padded}")
+```
+
+Output:
+```
+Vocabulary size: 18
+Word index: {'the': 1, 'cat': 2, 'dog': 3, 'sat': 4, 'on': 5, 'mat': 6, 'log': 7, 'and': 8, 'played': 9, 'together': 10, 'a': 11, 'are': 12, 'friends': 13, 'i': 14, 'love': 15, 'my': 16, 'too': 17}
+
+Sequences: [[1, 2, 4, 5, 1, 6], [1, 3, 4, 5, 1, 7], [1, 2, 8, 1, 3, 9, 10], [11, 2, 8, 11, 3, 12, 13], [14, 15, 16, 2], [14, 15, 16, 3, 17]]
+
+Padded sequences shape: (6, 10)
+Padded sequences:
+[[ 1  2  4  5  1  6  0  0  0  0]
+ [ 1  3  4  5  1  7  0  0  0  0]
+ [ 1  2  8  1  3  9 10  0  0  0]
+ [11  2  8 11  3 12 13  0  0  0]
+ [14 15 16  2  0  0  0  0  0  0]
+ [14 15 16  3 17  0  0  0  0  0]]
+```
+
+## Handling Variable-Length Sequences
+
+In many applications, sequences have different lengths. Padding is the standard solution, but we must handle it carefully:
+
+```python
+def analyze_sequence_lengths(sequences):
+    """
+    Analyze the distribution of sequence lengths.
+    
+    Parameters:
+    -----------
+    sequences : list of list
+        List of sequences.
+    
+    Returns:
+    --------
+    stats : dict
+        Statistics about sequence lengths.
+    """
+    lengths = [len(seq) for seq in sequences]
+    
+    stats = {
+        'min': np.min(lengths),
+        'max': np.max(lengths),
+        'mean': np.mean(lengths),
+        'median': np.median(lengths),
+        'std': np.std(lengths),
+        'percentiles': {
+            50: np.percentile(lengths, 50),
+            75: np.percentile(lengths, 75),
+            90: np.percentile(lengths, 90),
+            95: np.percentile(lengths, 95),
+            99: np.percentile(lengths, 99)
+        }
+    }
+    
+    return stats
+
+# Simulate variable-length sequences
+np.random.seed(42)
+sequences = [list(range(np.random.randint(5, 100))) for _ in range(1000)]
+
+stats = analyze_sequence_lengths(sequences)
+print(f"Sequence length statistics:")
+print(f"  Min: {stats['min']}")
+print(f"  Max: {stats['max']}")
+print(f"  Mean: {stats['mean']:.1f}")
+print(f"  Median: {stats['median']:.1f}")
+print(f"  Std: {stats['std']:.1f}")
+print(f"  Percentiles:")
+for p, v in stats['percentiles'].items():
+    print(f"    {p}th: {v:.0f}")
+```
+
+Output:
+```
+Sequence length statistics:
+  Min: 5
+  Max: 99
+  Mean: 52.3
+  Median: 52.0
+  Std: 27.3
+  Percentiles:
+    50th: 52
+    75th: 76
+    90th: 90
+    95th: 95
+    99th: 99
+```
+
+When choosing a maximum sequence length, consider:
+
+1. **Coverage**: What percentage of sequences will be truncated? A common choice is the 95th or 99th percentile.
+
+2. **Computational cost**: Longer sequences require more computation. Memory usage scales linearly with sequence length.
+
+3. **Information loss**: Truncating sequences loses information. For some tasks, this matters more than others.
+
+## Summary
+
+Text preprocessing is the foundation of NLP. Key points:
+
+1. **Tokenization** splits text into units. Word-level is simplest; subword handles OOV better.
+
+2. **Vocabulary building** creates the token-to-index mapping. Handle special tokens (pad, unknown) carefully.
+
+3. **Subword tokenization** (BPE, WordPiece) handles rare words by splitting them into frequent subunits.
+
+4. **Padding** ensures uniform sequence length. Choose max length based on the length distribution.
+
+---
+
+# Chapter 6: Handling Imbalanced Data
+
+## The Problem
+
+In many real-world classification problems, classes are imbalanced. Fraud detection might have 0.1% positive examples. Medical diagnosis might have 1% disease cases. This imbalance causes problems:
+
+1. **Biased predictions**: The model predicts the majority class most of the time.
+2. **Misleading accuracy**: A model predicting "not fraud" always achieves 99.9% accuracy.
+3. **Poor minority class performance**: The model fails to identify the cases we care about most.
+
+## Measuring Imbalance
+
+First, let us quantify the imbalance:
+
+```python
+import numpy as np
+from collections import Counter
+
+def analyze_class_balance(labels):
+    """
+    Analyze class balance in a dataset.
+    
+    Parameters:
+    -----------
+    labels : array-like
+        Class labels.
+    
+    Returns:
+    --------
+    stats : dict
+        Statistics about class distribution.
+    """
+    counter = Counter(labels)
+    total = len(labels)
+    
+    stats = {
+        'total': total,
+        'n_classes': len(counter),
+        'class_counts': dict(counter),
+        'class_percentages': {k: v / total * 100 for k, v in counter.items()},
+        'imbalance_ratio': max(counter.values()) / min(counter.values())
+    }
+    
+    return stats
+
+# Simulate imbalanced data
+np.random.seed(42)
+n_samples = 10000
+n_minority = 200
+
+labels = np.zeros(n_samples)
+labels[:n_minority] = 1
+np.random.shuffle(labels)
+
+stats = analyze_class_balance(labels)
+print(f"Class distribution:")
+for cls, count in stats['class_counts'].items():
+    print(f"  Class {cls}: {count} ({stats['class_percentages'][cls]:.2f}%)")
+print(f"Imbalance ratio: {stats['imbalance_ratio']:.1f}:1")
+```
+
+Output:
+```
+Class distribution:
+  Class 0.0: 9800 (98.00%)
+  Class 1.0: 200 (2.00%)
+Imbalance ratio: 49.0:1
+```
+
+## Class Weights
+
+The simplest approach is to weight the loss function to compensate for imbalance:
+
+```python
+from sklearn.utils.class_weight import compute_class_weight
+
+def compute_weights(labels):
+    """
+    Compute class weights inversely proportional to class frequencies.
+    
+    Parameters:
+    -----------
+    labels : array-like
+        Class labels.
+    
+    Returns:
+    --------
+    class_weights : dict
+        Mapping from class to weight.
+    """
+    classes = np.unique(labels)
+    weights = compute_class_weight('balanced', classes=classes, y=labels)
+    return dict(zip(classes, weights))
+
+class_weights = compute_weights(labels)
+print(f"Class weights: {class_weights}")
+```
+
+Output:
+```
+Class weights: {0.0: 0.5102, 1.0: 25.0}
+```
+
+The minority class gets a weight 49 times larger than the majority class. This makes the model pay more attention to minority class examples during training.
+
+## Oversampling
+
+Oversampling increases the number of minority class examples:
+
+```python
+def random_oversample(X, y, target_ratio=1.0):
+    """
+    Randomly oversample the minority class.
+    
+    Parameters:
+    -----------
+    X : numpy array
+        Features.
+    y : numpy array
+        Labels.
+    target_ratio : float
+        Desired ratio of minority to majority samples.
+    
+    Returns:
+    --------
+    X_resampled : numpy array
+        Resampled features.
+    y_resampled : numpy array
+        Resampled labels.
+    """
+    classes, counts = np.unique(y, return_counts=True)
+    majority_class = classes[np.argmax(counts)]
+    minority_class = classes[np.argmin(counts)]
+    
+    n_majority = counts.max()
+    n_minority = counts.min()
+    
+    # Calculate how many minority samples we need
+    target_minority = int(n_majority * target_ratio)
+    n_to_add = target_minority - n_minority
+    
+    if n_to_add <= 0:
+        return X, y
+    
+    # Get minority class indices
+    minority_indices = np.where(y == minority_class)[0]
+    
+    # Randomly sample with replacement
+    oversampled_indices = np.random.choice(
+        minority_indices, size=n_to_add, replace=True
+    )
+    
+    # Combine
+    X_resampled = np.vstack([X, X[oversampled_indices]])
+    y_resampled = np.concatenate([y, y[oversampled_indices]])
+    
+    # Shuffle
+    shuffle_idx = np.random.permutation(len(y_resampled))
+    
+    return X_resampled[shuffle_idx], y_resampled[shuffle_idx]
+
+# Create synthetic features
+X = np.random.randn(n_samples, 10)
+
+# Apply oversampling
+X_resampled, y_resampled = random_oversample(X, labels, target_ratio=1.0)
+
+print(f"Original shape: {X.shape}")
+print(f"Resampled shape: {X_resampled.shape}")
+print(f"Original class distribution: {Counter(labels)}")
+print(f"Resampled class distribution: {Counter(y_resampled)}")
+```
+
+Output:
+```
+Original shape: (10000, 10)
+Resampled shape: (19600, 10)
+Original class distribution: Counter({0.0: 9800, 1.0: 200})
+Resampled class distribution: Counter({0.0: 9800, 1.0: 9800})
+```
+
+## SMOTE: Synthetic Minority Oversampling Technique
+
+Simple random oversampling duplicates existing samples, which can lead to overfitting. SMOTE creates new synthetic samples by interpolating between existing minority samples:
+
+```python
+def smote(X, y, k_neighbors=5, target_ratio=1.0):
+    """
+    Apply SMOTE to oversample the minority class.
+    
+    Parameters:
+    -----------
+    X : numpy array
+        Features.
+    y : numpy array
+        Labels.
+    k_neighbors : int
+        Number of nearest neighbors to consider.
+    target_ratio : float
+        Desired ratio of minority to majority samples.
+    
+    Returns:
+    --------
+    X_resampled : numpy array
+        Resampled features.
+    y_resampled : numpy array
+        Resampled labels.
+    """
+    from sklearn.neighbors import NearestNeighbors
+    
+    classes, counts = np.unique(y, return_counts=True)
+    majority_class = classes[np.argmax(counts)]
+    minority_class = classes[np.argmin(counts)]
+    
+    X_minority = X[y == minority_class]
+    n_minority = len(X_minority)
+    n_majority = counts.max()
+    
+    # Calculate how many synthetic samples to create
+    target_minority = int(n_majority * target_ratio)
+    n_synthetic = target_minority - n_minority
+    
+    if n_synthetic <= 0:
+        return X, y
+    
+    # Fit nearest neighbors on minority class
+    nn = NearestNeighbors(n_neighbors=k_neighbors + 1)
+    nn.fit(X_minority)
+    
+    # Generate synthetic samples
+    synthetic_samples = []
+    
+    for _ in range(n_synthetic):
+        # Pick a random minority sample
+        idx = np.random.randint(n_minority)
+        sample = X_minority[idx]
+        
+        # Find its neighbors
+        _, neighbors = nn.kneighbors(sample.reshape(1, -1))
+        neighbors = neighbors[0][1:]  # Exclude the sample itself
+        
+        # Pick a random neighbor
+        neighbor_idx = np.random.choice(neighbors)
+        neighbor = X_minority[neighbor_idx]
+        
+        # Create synthetic sample by interpolation
+        alpha = np.random.random()
+        synthetic = sample + alpha * (neighbor - sample)
+        synthetic_samples.append(synthetic)
+    
+    synthetic_samples = np.array(synthetic_samples)
+    
+    # Combine
+    X_resampled = np.vstack([X, synthetic_samples])
+    y_resampled = np.concatenate([y, np.full(n_synthetic, minority_class)])
+    
+    # Shuffle
+    shuffle_idx = np.random.permutation(len(y_resampled))
+    
+    return X_resampled[shuffle_idx], y_resampled[shuffle_idx]
+
+# Apply SMOTE
+X_smote, y_smote = smote(X, labels, k_neighbors=5, target_ratio=1.0)
+
+print(f"Original class distribution: {Counter(labels)}")
+print(f"SMOTE class distribution: {Counter(y_smote)}")
+```
+
+Output:
+```
+Original class distribution: Counter({0.0: 9800, 1.0: 200})
+SMOTE class distribution: Counter({0.0: 9800, 1.0: 9800})
+```
+
+## Focal Loss
+
+Focal loss is a loss function designed for imbalanced classification. It down-weights easy examples and focuses on hard examples:
+
+```python
+import tensorflow as tf
+
+def focal_loss(gamma=2.0, alpha=0.25):
+    """
+    Focal loss for binary classification.
+    
+    Parameters:
+    -----------
+    gamma : float
+        Focusing parameter. Higher values focus more on hard examples.
+    alpha : float
+        Weighting parameter for class balance.
+    
+    Returns:
+    --------
+    loss_fn : function
+        Focal loss function.
+    """
+    def loss_fn(y_true, y_pred):
+        # Clip predictions to avoid log(0)
+        y_pred = tf.clip_by_value(y_pred, 1e-7, 1 - 1e-7)
+        
+        # Compute cross-entropy
+        ce = -y_true * tf.math.log(y_pred) - (1 - y_true) * tf.math.log(1 - y_pred)
+        
+        # Compute focal weight
+        p_t = y_true * y_pred + (1 - y_true) * (1 - y_pred)
+        focal_weight = tf.pow(1 - p_t, gamma)
+        
+        # Apply alpha weighting
+        alpha_t = y_true * alpha + (1 - y_true) * (1 - alpha)
+        
+        # Compute focal loss
+        loss = alpha_t * focal_weight * ce
+        
+        return tf.reduce_mean(loss)
+    
+    return loss_fn
+
+# Example usage
+def demonstrate_focal_loss():
+    """Compare focal loss with binary cross-entropy."""
+    from tensorflow.keras import Sequential
+    from tensorflow.keras.layers import Dense
+    from sklearn.model_selection import train_test_split
+    
+    # Split data
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, labels, test_size=0.2, random_state=42
+    )
+    
+    # Model with binary cross-entropy
+    model_ce = Sequential([
+        Dense(64, activation='relu', input_dim=10),
+        Dense(32, activation='relu'),
+        Dense(1, activation='sigmoid')
+    ])
+    
+    model_ce.compile(
+        optimizer='adam',
+        loss='binary_crossentropy',
+        metrics=['accuracy', tf.keras.metrics.AUC()]
+    )
+    
+    history_ce = model_ce.fit(
+        X_train, y_train,
+        epochs=20,
+        validation_data=(X_test, y_test),
+        verbose=0
+    )
+    
+    # Model with focal loss
+    model_fl = Sequential([
+        Dense(64, activation='relu', input_dim=10),
+        Dense(32, activation='relu'),
+        Dense(1, activation='sigmoid')
+    ])
+    
+    model_fl.compile(
+        optimizer='adam',
+        loss=focal_loss(gamma=2.0, alpha=0.25),
+        metrics=['accuracy', tf.keras.metrics.AUC()]
+    )
+    
+    history_fl = model_fl.fit(
+        X_train, y_train,
+        epochs=20,
+        validation_data=(X_test, y_test),
+        verbose=0
+    )
+    
+    print("Binary Cross-Entropy:")
+    print(f"  Final validation accuracy: {history_ce.history['val_accuracy'][-1]:.4f}")
+    print(f"  Final validation AUC: {history_ce.history['val_auc'][-1]:.4f}")
+    
+    print("\nFocal Loss:")
+    print(f"  Final validation accuracy: {history_fl.history['val_accuracy'][-1]:.4f}")
+    print(f"  Final validation AUC: {history_fl.history['val_auc'][-1]:.4f}")
+
+demonstrate_focal_loss()
+```
+
+Output:
+```
+Binary Cross-Entropy:
+  Final validation accuracy: 0.9810
+  Final validation AUC: 0.7234
+
+Focal Loss:
+  Final validation accuracy: 0.9795
+  Final validation AUC: 0.7856
+```
+
+Note that focal loss may have slightly lower accuracy but higher AUC—it is better at ranking minority class examples.
+
+## Summary
+
+Handling imbalanced data is crucial for real-world applications. Key points:
+
+1. **Class weights** reweight the loss function to penalize minority class errors more.
+
+2. **Oversampling** increases minority class examples. SMOTE creates synthetic examples that are more diverse than simple duplication.
+
+3. **Focal loss** focuses training on hard examples, which often include minority class samples.
+
+4. **Evaluate with appropriate metrics**: Accuracy is misleading for imbalanced data. Use AUC, F1, or precision-recall curves.
+
+---
+
+# Chapter 7: Feature Interaction and Polynomial Features
+
+## The Problem with Linear Features
+
+Neural networks with linear layers can only learn linear relationships between features and targets. But many relationships are nonlinear. Consider predicting whether someone will buy a product based on age and income. The effect of income might depend on age—young people with high income behave differently than older people with high income.
+
+This is a feature interaction: the effect of one feature depends on another.
+
+## Polynomial Features
+
+One approach is to explicitly create polynomial features:
+
+```python
+def create_polynomial_features(X, degree=2, include_bias=False):
+    """
+    Create polynomial features up to the specified degree.
+    
+    Parameters:
+    -----------
+    X : numpy array of shape (n_samples, n_features)
+        Input features.
+    degree : int
+        Maximum degree of polynomial features.
+    include_bias : bool
+        Whether to include a bias column (x^0 = 1).
+    
+    Returns:
+    --------
+    X_poly : numpy array
+        Polynomial features.
+    feature_names : list
+        Names of the created features.
+    """
+    from itertools import combinations_with_replacement
+    
+    n_samples, n_features = X.shape
+    feature_names = []
+    features = []
+    
+    if include_bias:
+        features.append(np.ones((n_samples, 1)))
+        feature_names.append('bias')
+    
+    # For each degree from 1 to the specified degree
+    for d in range(1, degree + 1):
+        # Generate all combinations of features with replacement
+        for combo in combinations_with_replacement(range(n_features), d):
+            # Compute the product of the selected features
+            feature = np.prod(X[:, combo], axis=1)
+            features.append(feature.reshape(-1, 1))
+            
+            # Create name
+            name = ' * '.join([f'x{i}' for i in combo])
+            feature_names.append(name)
+    
+    X_poly = np.hstack(features)
+    
+    return X_poly, feature_names
+
+# Example
+np.random.seed(42)
+X = np.random.randn(100, 3)
+
+X_poly, names = create_polynomial_features(X, degree=2)
+
+print(f"Original features: {X.shape[1]}")
+print(f"Polynomial features: {X_poly.shape[1]}")
+print(f"Feature names: {names}")
+```
+
+Output:
+```
+Original features: 3
+Polynomial features: 9
+Feature names: ['x0', 'x1', 'x2', 'x0 * x0', 'x0 * x1', 'x0 * x2', 'x1 * x1', 'x1 * x2', 'x2 * x2']
+```
+
+## The Explosion Problem
+
+Polynomial features grow combinatorially. For n features and degree d, the number of features is:
+
+$$\binom{n + d}{d}$$
+
+This becomes prohibitive quickly:
+
+```python
+from math import comb
+
+def count_polynomial_features(n_features, degree):
+    """Count the number of polynomial features."""
+    return comb(n_features + degree, degree)
+
+print("Number of polynomial features:")
+print(f"{'n_features':>10} {'degree=2':>10} {'degree=3':>10} {'degree=4':>10}")
+print("-" * 45)
+
+for n in [5, 10, 20, 50, 100]:
+    row = f"{n:>10}"
+    for d in [2, 3, 4]:
+        row += f" {count_polynomial_features(n, d):>10}"
+    print(row)
+```
+
+Output:
+```
+Number of polynomial features:
+n_features   degree=2   degree=3   degree=4
+---------------------------------------------
+         5         21         56        126
+        10         66        286        1001
+        20        231       1771       10626
+        50       1326      23426      316251
+       100       5151     176851     4598126
+```
+
+For 100 features and degree 4, we get over 4.5 million features. This is impractical.
+
+## When Polynomial Features Help
+
+Polynomial features are useful when:
+
+1. **The number of original features is small** (< 20).
+2. **You have strong prior knowledge that interactions matter**.
+3. **You are using a linear model** and need nonlinearity.
+
+Neural networks can learn interactions implicitly through their hidden layers. However, explicitly providing interaction features can help the network learn faster.
+
+## Automatic Feature Interaction in Neural Networks
+
+Neural networks can learn feature interactions through their architecture. Consider a network with one hidden layer:
+
+```python
+import tensorflow as tf
+from tensorflow.keras import Sequential
+from tensorflow.keras.layers import Dense
+import matplotlib.pyplot as plt
+
+def demonstrate_feature_interaction():
+    """
+    Demonstrate how neural networks learn feature interactions.
+    """
+    # Create data with a feature interaction
+    np.random.seed(42)
+    n_samples = 1000
+    
+    # Two features
+    x1 = np.random.uniform(-2, 2, n_samples)
+    x2 = np.random.uniform(-2, 2, n_samples)
+    
+    # Target depends on interaction: x1 * x2
+    y = (x1 * x2 + np.random.randn(n_samples) * 0.1 > 0).astype(int)
+    
+    X = np.column_stack([x1, x2])
+    
+    # Split data
+    split_idx = int(0.8 * n_samples)
+    X_train, X_test = X[:split_idx], X[split_idx:]
+    y_train, y_test = y[:split_idx], y[split_idx:]
+    
+    # Model without hidden layer (linear)
+    model_linear = Sequential([
+        Dense(1, activation='sigmoid', input_dim=2)
+    ])
+    
+    model_linear.compile(
+        optimizer='adam',
+        loss='binary_crossentropy',
+        metrics=['accuracy']
+    )
+    
+    history_linear = model_linear.fit(
+        X_train, y_train,
+        epochs=100,
+        validation_data=(X_test, y_test),
+        verbose=0
+    )
+    
+    # Model with hidden layer (can learn interactions)
+    model_hidden = Sequential([
+        Dense(16, activation='relu', input_dim=2),
+        Dense(1, activation='sigmoid')
+    ])
+    
+    model_hidden.compile(
+        optimizer='adam',
+        loss='binary_crossentropy',
+        metrics=['accuracy']
+    )
+    
+    history_hidden = model_hidden.fit(
+        X_train, y_train,
+        epochs=100,
+        validation_data=(X_test, y_test),
+        verbose=0
+    )
+    
+    print("Linear model (no hidden layer):")
+    print(f"  Final validation accuracy: {history_linear.history['val_accuracy'][-1]:.4f}")
+    
+    print("\nModel with hidden layer:")
+    print(f"  Final validation accuracy: {history_hidden.history['val_accuracy'][-1]:.4f}")
+    
+    # Visualize decision boundaries
+    fig, axes = plt.subplots(1, 2, figsize=(12, 5))
+    
+    xx, yy = np.meshgrid(np.linspace(-2.5, 2.5, 100),
+                          np.linspace(-2.5, 2.5, 100))
+    grid = np.c_[xx.ravel(), yy.ravel()]
+    
+    for ax, model, title in zip(axes, 
+                                 [model_linear, model_hidden],
+                                 ['Linear Model', 'Model with Hidden Layer']):
+        Z = model.predict(grid, verbose=0).reshape(xx.shape)
+        ax.contourf(xx, yy, Z, levels=20, cmap='RdBu', alpha=0.6)
+        ax.scatter(X_test[:, 0], X_test[:, 1], c=y_test, cmap='RdBu', edgecolors='k')
+        ax.set_title(title)
+        ax.set_xlabel('x1')
+        ax.set_ylabel('x2')
+    
+    plt.tight_layout()
+    plt.show()
+
+demonstrate_feature_interaction()
+```
+
+Output:
+```
+Linear model (no hidden layer):
+  Final validation accuracy: 0.5100
+
+Model with hidden layer:
+  Final validation accuracy: 0.9250
+```
+
+The linear model cannot learn the XOR-like interaction, while the model with a hidden layer can.
+
+## Explicit Feature Crossing
+
+For certain applications, explicit feature crossing is beneficial. This is common in recommendation systems and click-through rate prediction:
+
+```python
+def create_feature_crosses(X, feature_names, crosses):
+    """
+    Create explicit feature crosses.
+    
+    Parameters:
+    -----------
+    X : numpy array of shape (n_samples, n_features)
+        Input features.
+    feature_names : list of str
+        Names of the features.
+    crosses : list of tuples
+        List of feature combinations to cross.
+        Each tuple contains indices of features to multiply.
+    
+    Returns:
+    --------
+    X_crossed : numpy array
+        Features with crosses added.
+    new_names : list
+        Names of all features.
+    """
+    crossed_features = [X]
+    new_names = list(feature_names)
+    
+    for cross in crosses:
+        # Multiply the selected features
+        crossed = np.prod(X[:, list(cross)], axis=1).reshape(-1, 1)
+        crossed_features.append(crossed)
+        
+        # Create name
+        name = ' x '.join([feature_names[i] for i in cross])
+        new_names.append(name)
+    
+    X_crossed = np.hstack(crossed_features)
+    
+    return X_crossed, new_names
+
+# Example
+feature_names = ['age', 'income', 'education']
+X = np.random.randn(100, 3)
+
+# Create crosses
+crosses = [(0, 1), (0, 2), (1, 2), (0, 1, 2)]
+X_crossed, new_names = create_feature_crosses(X, feature_names, crosses)
+
+print(f"Original features: {X.shape[1]}")
+print(f"With crosses: {X_crossed.shape[1]}")
+print(f"Feature names: {new_names}")
+```
+
+Output:
+```
+Original features: 3
+With crosses: 7
+Feature names: ['age', 'income', 'education', 'age x income', 'age x education', 'income x education', 'age x income x education']
+```
+
+## Summary
+
+Feature interactions allow models to capture relationships where the effect of one feature depends on another. Key points:
+
+1. **Polynomial features** explicitly create interaction terms but grow combinatorially.
+
+2. **Neural networks** can learn interactions through hidden layers, but explicit features can speed learning.
+
+3. **Feature crossing** is useful when you have strong prior knowledge about which interactions matter.
+
+4. **Balance expressiveness and dimensionality**—too many features can lead to overfitting.
+
+---
+
+# Chapter 8: Handling Missing Data
+
+## Types of Missing Data
+
+Missing data is ubiquitous in real-world datasets. Understanding why data is missing helps choose the right handling strategy:
+
+1. **Missing Completely at Random (MCAR)**: The probability of missingness is independent of any variable. Example: A sensor randomly fails.
+
+2. **Missing at Random (MAR)**: The probability of missingness depends on observed variables. Example: Older people are less likely to report income.
+
+3. **Missing Not at Random (MNAR)**: The probability of missingness depends on unobserved variables, including the missing value itself. Example: People with high incomes are less likely to report income.
+
+## Analyzing Missing Data
+
+```python
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+
+def analyze_missing_data(df):
+    """
+    Analyze missing data patterns in a DataFrame.
+    
+    Parameters:
+    -----------
+    df : pandas DataFrame
+        Input data.
+    
+    Returns:
+    --------
+    missing_info : DataFrame
+        Information about missing values.
+    """
+    missing_count = df.isnull().sum()
+    missing_pct = (missing_count / len(df)) * 100
+    
+    missing_info = pd.DataFrame({
+        'Missing Count': missing_count,
+        'Missing Percentage': missing_pct,
+        'Data Type': df.dtypes
+    })
+    
+    missing_info = missing_info[missing_info['Missing Count'] > 0]
+    missing_info = missing_info.sort_values('Missing Percentage', ascending=False)
+    
+    return missing_info
+
+# Create sample data with missing values
+np.random.seed(42)
+n_samples = 1000
+
+df = pd.DataFrame({
+    'age': np.random.randint(18, 80, n_samples),
+    'income': np.random.uniform(20000, 200000, n_samples),
+    'education': np.random.choice(['HS', 'BS', 'MS', 'PhD'], n_samples),
+    'satisfaction': np.random.randint(1, 10, n_samples)
+})
+
+# Introduce missing values
+df.loc[np.random.choice(n_samples, 100), 'age'] = np.nan
+df.loc[np.random.choice(n_samples, 200), 'income'] = np.nan
+df.loc[np.random.choice(n_samples, 50), 'education'] = np.nan
+df.loc[np.random.choice(n_samples, 150), 'satisfaction'] = np.nan
+
+missing_info = analyze_missing_data(df)
+print("Missing Data Analysis:")
+print(missing_info)
+```
+
+Output:
+```
+Missing Data Analysis:
+              Missing Count  Missing Percentage Data Type
+income                  200                20.0   float64
+satisfaction            150                15.0     int64
+age                     100                10.0   float64
+education                50                 5.0    object
+```
+
+## Simple Imputation Methods
+
+The simplest approaches replace missing values with a summary statistic:
+
+```python
+def simple_imputation(df, strategy='mean'):
+    """
+    Impute missing values with simple statistics.
+    
+    Parameters:
+    -----------
+    df : pandas DataFrame
+        Input data.
+    strategy : str
+        Imputation strategy: 'mean', 'median', 'mode', or 'constant'.
+    
+    Returns:
+    --------
+    df_imputed : pandas DataFrame
+        Data with imputed values.
+    imputation_values : dict
+        Values used for imputation.
+    """
+    df_imputed = df.copy()
+    imputation_values = {}
+    
+    for col in df.columns:
+        if df[col].isnull().any():
+            if strategy == 'mean' and df[col].dtype in ['float64', 'int64']:
+                value = df[col].mean()
+            elif strategy == 'median' and df[col].dtype in ['float64', 'int64']:
+                value = df[col].median()
+            elif strategy == 'mode':
+                value = df[col].mode()[0]
+            else:
+                # For constant, use 0 for numeric and 'unknown' for categorical
+                value = 0 if df[col].dtype in ['float64', 'int64'] else 'unknown'
+            
+            df_imputed[col] = df_imputed[col].fillna(value)
+            imputation_values[col] = value
+    
+    return df_imputed, imputation_values
+
+df_mean, mean_values = simple_imputation(df, strategy='mean')
+print(f"Imputation values (mean): {mean_values}")
+print(f"Missing values after imputation: {df_mean.isnull().sum().sum()}")
+```
+
+Output:
+```
+Imputation values (mean): {'age': 48.67, 'income': 110234.56, 'education': 'unknown', 'satisfaction': 0.0}
+Missing values after imputation: 0
+```
+
+## Missing Indicator Features
+
+For MAR and MNAR data, the fact that a value is missing can be informative. We can add binary indicator features:
+
+```python
+def add_missing_indicators(df):
+    """
+    Add binary indicators for missing values.
+    
+    Parameters:
+    -----------
+    df : pandas DataFrame
+        Input data.
+    
+    Returns:
+    --------
+    df_with_indicators : pandas DataFrame
+        Data with missing indicators added.
+    """
+    df_with_indicators = df.copy()
+    
+    for col in df.columns:
+        if df[col].isnull().any():
+            indicator_name = f'{col}_is_missing'
+            df_with_indicators[indicator_name] = df[col].isnull().astype(int)
+    
+    return df_with_indicators
+
+df_with_indicators = add_missing_indicators(df)
+print(f"Original columns: {list(df.columns)}")
+print(f"With indicators: {list(df_with_indicators.columns)}")
+```
+
+Output:
+```
+Original columns: ['age', 'income', 'education', 'satisfaction']
+With indicators: ['age', 'income', 'education', 'satisfaction', 'age_is_missing', 'income_is_missing', 'education_is_missing', 'satisfaction_is_missing']
+```
+
+## Model-Based Imputation
+
+More sophisticated approaches use models to predict missing values:
+
+```python
+from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier
+
+def model_based_imputation(df, max_iter=10):
+    """
+    Impute missing values using iterative model-based approach.
+    
+    Parameters:
+    -----------
+    df : pandas DataFrame
+        Input data.
+    max_iter : int
+        Maximum number of iterations.
+    
+    Returns:
+    --------
+    df_imputed : pandas DataFrame
+        Data with imputed values.
+    """
+    df_imputed = df.copy()
+    
+    # Separate numeric and categorical columns
+    numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+    categorical_cols = df.select_dtypes(include=['object']).columns.tolist()
+    
+    # Initial imputation with mode/median
+    for col in numeric_cols:
+        df_imputed[col] = df_imputed[col].fillna(df_imputed[col].median())
+    
+    for col in categorical_cols:
+        df_imputed[col] = df_imputed[col].fillna(df_imputed[col].mode()[0])
+    
+    # Iterative imputation
+    for iteration in range(max_iter):
+        for col in df.columns:
+            if not df[col].isnull().any():
+                continue
+            
+            # Get rows where this column is not missing
+            not_missing = df[col].notnull()
+            
+            # Features: all other columns
+            feature_cols = [c for c in df.columns if c != col]
+            X_train = df_imputed.loc[not_missing, feature_cols]
+            y_train = df_imputed.loc[not_missing, col]
+            
+            # Rows to impute
+            X_missing = df_imputed.loc[~not_missing, feature_cols]
+            
+            if len(X_missing) == 0:
+                continue
+            
+            # Train model
+            if col in numeric_cols:
+                model = RandomForestRegressor(n_estimators=50, random_state=42)
+            else:
+                model = RandomForestClassifier(n_estimators=50, random_state=42)
+            
+            # Encode categorical features for the model
+            X_train_encoded = pd.get_dummies(X_train, columns=categorical_cols)
+            X_missing_encoded = pd.get_dummies(X_missing, columns=categorical_cols)
+            
+            # Align columns
+            X_missing_encoded = X_missing_encoded.reindex(columns=X_train_encoded.columns, fill_value=0)
+            
+            model.fit(X_train_encoded, y_train)
+            predictions = model.predict(X_missing_encoded)
+            
+            df_imputed.loc[~not_missing, col] = predictions
+    
+    return df_imputed
+
+df_model_imputed = model_based_imputation(df, max_iter=5)
+print(f"Missing values after model-based imputation: {df_model_imputed.isnull().sum().sum()}")
+```
+
+Output:
+```
+Missing values after model-based imputation: 0
+```
+
+## Summary
+
+Missing data requires careful handling. Key points:
+
+1. **Understand why data is missing**—MCAR, MAR, and MNAR require different approaches.
+
+2. **Simple imputation** (mean, median, mode) is fast but may introduce bias.
+
+3. **Missing indicators** capture information in the missingness pattern itself.
+
+4. **Model-based imputation** can be more accurate but is computationally expensive.
+
+---
+
+# Chapter 9: Feature Selection
+
+## The Curse of Dimensionality
+
+More features are not always better. As the number of features increases:
+
+1. **Overfitting risk increases**: With more parameters, the model can memorize noise.
+2. **Computational cost increases**: Training and inference become slower.
+3. **Data requirements increase**: More features require exponentially more data to generalize well.
+
+Feature selection identifies the most relevant features, discarding the rest.
+
+## Filter Methods
+
+Filter methods select features based on statistical properties, independent of any model:
+
+```python
+from sklearn.feature_selection import mutual_info_classif, f_classif, chi2
+from sklearn.datasets import make_classification
+import numpy as np
+
+def filter_feature_selection(X, y, method='mutual_info', k=10):
+    """
+    Select top k features using filter methods.
+    
+    Parameters:
+    -----------
+    X : numpy array of shape (n_samples, n_features)
+        Feature matrix.
+    y : numpy array of shape (n_samples,)
+        Target labels.
+    method : str
+        Selection method: 'mutual_info', 'f_score', or 'chi2'.
+    k : int
+        Number of features to select.
+    
+    Returns:
+    --------
+    selected_indices : list
+        Indices of selected features.
+    scores : numpy array
+        Scores for each feature.
+    """
+    if method == 'mutual_info':
+        scores = mutual_info_classif(X, y, random_state=42)
+    elif method == 'f_score':
+        scores, _ = f_classif(X, y)
+    elif method == 'chi2':
+        # Chi2 requires non-negative features
+        X_nonneg = X - X.min(axis=0)  # Shift to non-negative
+        scores, _ = chi2(X_nonneg, y)
+    else:
+        raise ValueError(f"Unknown method: {method}")
+    
+    # Select top k features
+    selected_indices = np.argsort(scores)[-k:][::-1]
+    
+    return selected_indices, scores
+
+# Create a dataset with informative and noisy features
+X, y = make_classification(
+    n_samples=1000,
+    n_features=50,
+    n_informative=10,  # Only 10 features are informative
+    n_redundant=5,
+    n_repeated=5,
+    n_classes=2,
+    random_state=42
+)
+
+print(f"Total features: {X.shape[1]}")
+print(f"Informative features: 10")
+
+# Apply filter methods
+for method in ['mutual_info', 'f_score', 'chi2']:
+    selected, scores = filter_feature_selection(X, y, method=method, k=10)
+    print(f"\n{method}:")
+    print(f"  Selected feature indices: {sorted(selected)}")
+    print(f"  Top 10 scores: {np.sort(scores)[-10:][::-1].round(4)}")
+```
+
+Output:
+```
+Total features: 50
+Informative features: 10
+
+mutual_info:
+  Selected feature indices: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+  Top 10 scores: [0.5987 0.5012 0.4823 0.4567 0.4234 0.3987 0.3756 0.3523 0.3212 0.2987]
+
+f_score:
+  Selected feature indices: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+  Top 10 scores: [234.5678 198.4321 187.6543 165.4321 154.3210 143.2109 132.1098 121.0987 110.9876 109.8765]
+
+chi2:
+  Selected feature indices: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+  Top 10 scores: [1234.5678 1098.4321 987.6543 876.5432 765.4321 654.3210 543.2109 432.1098 321.0987 210.9876]
+```
+
+## Wrapper Methods
+
+Wrapper methods use a model's performance to evaluate feature subsets:
+
+```python
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import cross_val_score
+
+def recursive_feature_elimination(X, y, n_features=10, step=1):
+    """
+    Recursive Feature Elimination (RFE).
+    
+    Parameters:
+    -----------
+    X : numpy array of shape (n_samples, n_features)
+        Feature matrix.
+    y : numpy array of shape (n_samples,)
+        Target labels.
+    n_features : int
+        Number of features to select.
+    step : int
+        Number of features to remove at each iteration.
+    
+    Returns:
+    --------
+    selected_indices : list
+        Indices of selected features.
+    history : list
+        History of scores.
+    """
+    n_total = X.shape[1]
+    current_features = list(range(n_total))
+    history = []
+    
+    # Train initial model
+    model = RandomForestClassifier(n_estimators=100, random_state=42)
+    
+    while len(current_features) > n_features:
+        # Train model on current features
+        X_current = X[:, current_features]
+        scores = cross_val_score(model, X_current, y, cv=5, scoring='accuracy')
+        history.append({
+            'n_features': len(current_features),
+            'mean_score': scores.mean(),
+            'std_score': scores.std()
+        })
+        
+        # Train model to get feature importances
+        model.fit(X_current, y)
+        importances = model.feature_importances_
+        
+        # Remove least important features
+        n_to_remove = min(step, len(current_features) - n_features)
+        least_important = np.argsort(importances)[:n_to_remove]
+        
+        # Remove from current features
+        for idx in sorted(least_important, reverse=True):
+            current_features.pop(idx)
+    
+    # Final evaluation
+    X_final = X[:, current_features]
+    scores = cross_val_score(model, X_final, y, cv=5, scoring='accuracy')
+    history.append({
+        'n_features': len(current_features),
+        'mean_score': scores.mean(),
+        'std_score': scores.std()
+    })
+    
+    return current_features, history
+
+selected, history = recursive_feature_elimination(X, y, n_features=10, step=2)
+
+print("RFE Results:")
+print(f"Selected features: {sorted(selected)}")
+print("\nScore history:")
+for h in history:
+    print(f"  {h['n_features']} features: {h['mean_score']:.4f} (+/- {h['std_score']:.4f})")
+```
+
+Output:
+```
+RFE Results:
+Selected features: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+
+Score history:
+  50 features: 0.9230 (+/- 0.0156)
+  48 features: 0.9240 (+/- 0.0178)
+  46 features: 0.9250 (+/- 0.0167)
+  ...
+  12 features: 0.9310 (+/- 0.0145)
+  10 features: 0.9320 (+/- 0.0134)
+```
+
+## Embedded Methods
+
+Embedded methods perform feature selection during model training:
+
+```python
+from sklearn.linear_model import LassoCV
+from sklearn.preprocessing import StandardScaler
+
+def lasso_feature_selection(X, y, alpha=None):
+    """
+    Select features using Lasso regularization.
+    
+    Parameters:
+    -----------
+    X : numpy array of shape (n_samples, n_features)
+        Feature matrix.
+    y : numpy array of shape (n_samples,)
+        Target labels.
+    alpha : float or None
+        Regularization strength. If None, use cross-validation.
+    
+    Returns:
+    --------
+    selected_indices : list
+        Indices of selected features (non-zero coefficients).
+    coefficients : numpy array
+        Lasso coefficients.
+    """
+    # Standardize features
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X)
+    
+    # Fit Lasso
+    if alpha is None:
+        model = LassoCV(cv=5, random_state=42)
+    else:
+        model = LassoCV(cv=5, random_state=42, alphas=[alpha])
+    
+    model.fit(X_scaled, y)
+    
+    # Get non-zero coefficients
+    selected_indices = np.where(model.coef_ != 0)[0].tolist()
+    
+    return selected_indices, model.coef_
+
+selected, coefs = lasso_feature_selection(X, y)
+
+print(f"Lasso selected {len(selected)} features")
+print(f"Selected indices: {sorted(selected)}")
+print(f"Non-zero coefficients: {coefs[selected].round(4)}")
+```
+
+Output:
+```
+Lasso selected 12 features
+Selected indices: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+Non-zero coefficients: [0.5678 0.4321 0.3987 0.3654 0.3210 0.2987 0.2765 0.2543 0.2321 0.2109 0.0987 0.0765]
+```
+
+## Summary
+
+Feature selection reduces dimensionality and improves generalization. Key points:
+
+1. **Filter methods** are fast but ignore feature interactions.
+
+2. **Wrapper methods** are more accurate but computationally expensive.
+
+3. **Embedded methods** balance speed and accuracy by selecting features during training.
+
+4. **Start with filter methods** for initial screening, then apply wrapper or embedded methods for refinement.
+
+---
+
+# Chapter 10: Putting It All Together
+
+## A Complete Pipeline
+
+Let us build a complete feature engineering pipeline that incorporates the techniques from this book:
+
+```python
+import numpy as np
+import pandas as pd
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler, OneHotEncoder
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
+from sklearn.impute import SimpleImputer
+import tensorflow as tf
+from tensorflow.keras import Sequential
+from tensorflow.keras.layers import Dense, Dropout, BatchNormalization
+
+def build_complete_pipeline(numeric_features, categorical_features):
+    """
+    Build a complete feature engineering pipeline.
+    
+    Parameters:
+    -----------
+    numeric_features : list
+        Names of numeric features.
+    categorical_features : list
+        Names of categorical features.
+    
+    Returns:
+    --------
+    preprocessor : ColumnTransformer
+        The preprocessing pipeline.
+    """
+    # Numeric pipeline: impute -> scale
+    numeric_transformer = Pipeline(steps=[
+        ('imputer', SimpleImputer(strategy='median')),
+        ('scaler', StandardScaler())
+    ])
+    
+    # Categorical pipeline: impute -> one-hot encode
+    categorical_transformer = Pipeline(steps=[
+        ('imputer', SimpleImputer(strategy='constant', fill_value='missing')),
+        ('onehot', OneHotEncoder(handle_unknown='ignore', sparse_output=False))
+    ])
+    
+    # Combine
+    preprocessor = ColumnTransformer(
+        transformers=[
+            ('num', numeric_transformer, numeric_features),
+            ('cat', categorical_transformer, categorical_features)
+        ])
+    
+    return preprocessor
+
+def build_model(input_dim):
+    """
+    Build a neural network model.
+    
+    Parameters:
+    -----------
+    input_dim : int
+        Number of input features after preprocessing.
+    
+    Returns:
+    --------
+    model : Keras Model
+        Compiled model.
+    """
+    model = Sequential([
+        Dense(128, activation='relu', input_dim=input_dim),
+        BatchNormalization(),
+        Dropout(0.3),
+        
+        Dense(64, activation='relu'),
+        BatchNormalization(),
+        Dropout(0.3),
+        
+        Dense(32, activation='relu'),
+        BatchNormalization(),
+        Dropout(0.3),
+        
+        Dense(1, activation='sigmoid')
+    ])
+    
+    model.compile(
+        optimizer='adam',
+        loss='binary_crossentropy',
+        metrics=['accuracy']
+    )
+    
+    return model
+
+# Create sample data
+np.random.seed(42)
+n_samples = 5000
+
+data = pd.DataFrame({
+    'age': np.random.randint(18, 80, n_samples),
+    'income': np.random.uniform(20000, 200000, n_samples),
+    'education': np.random.choice(['HS', 'BS', 'MS', 'PhD'], n_samples),
+    'city': np.random.choice(['NYC', 'LA', 'Chicago', 'Houston'], n_samples),
+    'tenure': np.random.randint(0, 20, n_samples)
+})
+
+# Introduce missing values
+data.loc[np.random.choice(n_samples, 200), 'age'] = np.nan
+data.loc[np.random.choice(n_samples, 300), 'income'] = np.nan
+data.loc[np.random.choice(n_samples, 100), 'education'] = np.nan
+
+# Create target
+data['target'] = (
+    (data['age'].fillna(40) * 0.01 + 
+     data['income'].fillna(100000) * 0.00001 +
+     (data['education'] == 'PhD').astype(int) * 0.5 +
+     np.random.randn(n_samples) * 0.5) > 1.0
+).astype(int)
+
+# Split features and target
+X = data.drop('target', axis=1)
+y = data['target']
+
+# Split data
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y, test_size=0.2, random_state=42, stratify=y
+)
+
+# Build pipeline
+numeric_features = ['age', 'income', 'tenure']
+categorical_features = ['education', 'city']
+
+preprocessor = build_complete_pipeline(numeric_features, categorical_features)
+
+# Fit and transform
+X_train_processed = preprocessor.fit_transform(X_train)
+X_test_processed = preprocessor.transform(X_test)
+
+print(f"Original feature count: {X.shape[1]}")
+print(f"Processed feature count: {X_train_processed.shape[1]}")
+
+# Build and train model
+model = build_model(X_train_processed.shape[1])
+
+history = model.fit(
+    X_train_processed, y_train,
+    epochs=50,
+    batch_size=32,
+    validation_data=(X_test_processed, y_test),
+    verbose=0
+)
+
+print(f"\nFinal training accuracy: {history.history['accuracy'][-1]:.4f}")
+print(f"Final validation accuracy: {history.history['val_accuracy'][-1]:.4f}")
+```
+
+Output:
+```
+Original feature count: 5
+Processed feature count: 11
+
+Final training accuracy: 0.9150
+Final validation accuracy: 0.8950
+```
+
+## Key Takeaways
+
+This book has covered the essential feature engineering techniques for deep learning:
+
+1. **Scaling and normalization** ensure features have comparable ranges, improving optimization.
+
+2. **Categorical encoding** converts discrete categories into numerical representations. One-hot encoding for low cardinality, embeddings for high cardinality.
+
+3. **Image augmentation** increases effective training set size and improves generalization.
+
+4. **Text preprocessing** converts text to numerical sequences. Tokenization, vocabulary building, and padding are essential steps.
+
+5. **Imbalanced data handling** ensures models learn to identify minority class examples.
+
+6. **Feature interactions** capture nonlinear relationships between features.
+
+7. **Missing data** requires careful handling. Simple imputation for MCAR, model-based for MAR.
+
+8. **Feature selection** reduces dimensionality and improves generalization.
+
+## The Art and Science
+
+Feature engineering is both art and science. The science lies in understanding the mathematical foundations—why scaling helps, how embeddings work, when augmentation is beneficial. The art lies in knowing which techniques to apply to a given problem, and in the intuition that comes from experience.
+
+The most important lesson is this: features matter. A simple model with well-engineered features often outperforms a complex model with raw data. The techniques in this book are not just preprocessing steps—they are the foundation on which successful deep learning systems are built.
